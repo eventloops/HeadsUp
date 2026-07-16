@@ -29,6 +29,7 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
     private readonly ConcurrentDictionary<string, DateTimeOffset> _recentHuddles = new();
 
     private string? _teamId;
+    private string? _selfUserId;
 
     public event EventHandler<HuddleEvent>? HuddleStarted;
 
@@ -47,11 +48,11 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(_slackOptions.AppToken) ||
-            string.IsNullOrWhiteSpace(_slackOptions.BotToken))
+            string.IsNullOrWhiteSpace(_slackOptions.UserToken))
         {
             _logger.LogWarning(
                 "Slack tokens are not configured. Edit appsettings.json and restart. " +
-                "AppToken (xapp-...) and BotToken (xoxb-...) are both required.");
+                "AppToken (xapp-...) and UserToken (xoxp-...) are both required.");
             return;
         }
 
@@ -62,6 +63,7 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
         {
             var auth = await _apiClient.Auth.Test();
             _teamId = auth.TeamId;
+            _selfUserId = auth.UserId;
         }
         catch (Exception ex)
         {
@@ -102,6 +104,13 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
         if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(channelId))
             return;
 
+        // No popup for huddles you started yourself.
+        if (userId.Equals(_selfUserId, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogDebug("Ignoring own huddle in channel {Channel}.", channelId);
+            return;
+        }
+
         var now = DateTimeOffset.Now;
         var lastSeen = _recentHuddles.GetOrAdd(channelId, now);
         if (lastSeen != now && now - lastSeen < DedupeCooldown)
@@ -113,7 +122,35 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
 
         try
         {
-            var (displayName, avatarUrl, channelName, isDm) = await ResolveNamesAsync(userId, channelId);
+            // Resolve the conversation first: it doubles as the membership gate.
+            // With a user token, events should only arrive for conversations the
+            // user is in, but this keeps a rogue/misconfigured app from notifying
+            // about channels they aren't a member of. DMs and group DMs are
+            // theirs by definition; fail open if the API call errors.
+            string channelName = channelId;
+            bool isDm = channelId.StartsWith('D');
+            try
+            {
+                var convInfo = await _apiClient.Conversations.Info(channelId);
+                if (convInfo is not null)
+                {
+                    if (!convInfo.IsIm && !convInfo.IsMpim && !convInfo.IsMember)
+                    {
+                        _logger.LogDebug(
+                            "Ignoring huddle in {Channel}: user is not a member.", channelId);
+                        return;
+                    }
+
+                    isDm = convInfo.IsIm;
+                    channelName = FirstNonEmpty(convInfo.Name) ?? channelId;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not resolve channel info for {ChannelId}.", channelId);
+            }
+
+            var (displayName, avatarUrl) = await ResolveUserAsync(userId);
             var isPriority = _slackOptions.PriorityUsers.Contains(userId, StringComparer.OrdinalIgnoreCase);
 
             // With a team id Slack can deep-link straight into the huddle;
@@ -146,13 +183,10 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
         }
     }
 
-    private async Task<(string DisplayName, string? AvatarUrl, string ChannelName, bool IsDm)> ResolveNamesAsync(
-        string userId, string channelId)
+    private async Task<(string DisplayName, string? AvatarUrl)> ResolveUserAsync(string userId)
     {
         string displayName = userId;
         string? avatarUrl = null;
-        string channelName = channelId;
-        bool isDm = channelId.StartsWith('D');
 
         try
         {
@@ -170,21 +204,7 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
             _logger.LogWarning(ex, "Could not resolve user name for {UserId}.", userId);
         }
 
-        try
-        {
-            var convInfo = await _apiClient.Conversations.Info(channelId);
-            if (convInfo is not null)
-            {
-                isDm = convInfo.IsIm;
-                channelName = FirstNonEmpty(convInfo.Name) ?? channelId;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Could not resolve channel name for {ChannelId}.", channelId);
-        }
-
-        return (displayName, avatarUrl, channelName, isDm);
+        return (displayName, avatarUrl);
     }
 
     private static string? FirstNonEmpty(params string?[] values) =>

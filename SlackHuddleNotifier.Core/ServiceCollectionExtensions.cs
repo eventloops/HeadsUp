@@ -25,7 +25,7 @@ public static class ServiceCollectionExtensions
         var slackOpts = configuration.GetSection(SlackOptions.SectionName).Get<SlackOptions>() ?? new();
         services.AddSlackNet(c =>
         {
-            c.UseApiToken(slackOpts.BotToken);
+            c.UseApiToken(slackOpts.UserToken);
             c.UseAppLevelToken(slackOpts.AppToken);
             c.RegisterEventHandler<MessageEvent>(sp => sp.GetRequiredService<SlackHuddleMonitor>());
         });

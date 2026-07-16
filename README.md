@@ -74,19 +74,29 @@ cd SlackHuddleNotifier
 Installs to `~/Applications/SlackHuddleNotifier`. The build RID is
 auto-detected (Apple Silicon vs Intel).
 
-## Slack app setup (one-time)
+## Slack app setup (one-time, per person)
+
+The app connects **as you** (a user token), so huddles are detected in exactly
+the channels, group DMs, and DMs you are a member of — including DM huddles —
+with no bot to invite anywhere. Huddles you start yourself are ignored.
+
+> **Each person creates their own Slack app.** Don't share one app between
+> teammates: Slack load-balances Socket Mode events across all connected
+> clients of an app, so two people on one app would each receive a random
+> half of the events — and a shared app authorized by several users would
+> deliver everyone's DM events to everyone.
 
 1. Create an app at <https://api.slack.com/apps> ("From scratch").
 2. **Socket Mode** → enable, and create an **app-level token** with the
    `connections:write` scope → this is your `xapp-...` token.
-3. **OAuth & Permissions** → add bot token scopes:
+3. **OAuth & Permissions** → under **User Token Scopes** add:
    `users:read`, `channels:read`, `groups:read`, `im:read`, `mpim:read`,
    `channels:history`, `groups:history`, `im:history`, `mpim:history`.
-4. **Event Subscriptions** → enable, subscribe to bot events:
+4. **Event Subscriptions** → enable, and under **Subscribe to events on
+   behalf of users** add:
    `message.channels`, `message.groups`, `message.im`, `message.mpim`.
-5. **Install App** to the workspace → this gives you the `xoxb-...` bot token.
-6. Invite the bot to the channels you want huddle alerts for
-   (`/invite @YourApp`).
+5. **Install App** to the workspace → copy the **User OAuth Token**
+   (`xoxp-...`).
 
 ## Configure
 
@@ -96,7 +106,7 @@ Edit `appsettings.json` in the install directory:
 {
   "Slack": {
     "AppToken": "xapp-...",
-    "BotToken": "xoxb-...",
+    "UserToken": "xoxp-...",
     "PriorityUsers": [ "U0123456789" ]
   },
   "Notification": {
