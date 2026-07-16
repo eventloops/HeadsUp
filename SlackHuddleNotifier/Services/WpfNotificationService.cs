@@ -4,6 +4,7 @@ using SlackHuddleNotifier.Configuration;
 using SlackHuddleNotifier.Models;
 using SlackHuddleNotifier.ViewModels;
 using SlackHuddleNotifier.Views;
+using System.IO;
 using System.Media;
 using System.Windows;
 using System.Windows.Threading;

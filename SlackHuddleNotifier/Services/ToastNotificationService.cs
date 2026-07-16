@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Toolkit.Uwp.Notifications;
 using SlackHuddleNotifier.Configuration;
 using SlackHuddleNotifier.Models;
+using System.IO;
 using System.Media;
 
 namespace SlackHuddleNotifier.Services;
@@ -44,14 +45,21 @@ public sealed class ToastNotificationService : INotificationService
 
     private void ShowToast(HuddleEvent huddle)
     {
-        var channelDisplay = huddle.ChannelName.StartsWith('D')
+        var channelDisplay = huddle.IsDirectMessage
             ? $"DM with {huddle.InitiatorDisplayName}"
             : $"#{huddle.ChannelName}";
 
-        var priorityPrefix = huddle.IsPriorityUser ? "?? PRIORITY – " : string.Empty;
+        var priorityPrefix = huddle.IsPriorityUser ? "PRIORITY - " : string.Empty;
 
-        new ToastContentBuilder()
-            .AddAppLogoOverride(new Uri("ms-appx:///Assets/tray.png"), ToastGenericAppLogoCrop.Circle)
+        var builder = new ToastContentBuilder();
+
+        // App logo: this is an unpackaged app, so ms-appx URIs don't resolve.
+        // Use the icon copied next to the executable, if present.
+        var logoPath = Path.Combine(AppContext.BaseDirectory, "Assets", "tray.ico");
+        if (File.Exists(logoPath))
+            builder.AddAppLogoOverride(new Uri(logoPath), ToastGenericAppLogoCrop.Circle);
+
+        builder
             .AddHeader("huddle", $"{priorityPrefix}Slack Huddle Started", string.Empty)
             .AddText($"{huddle.InitiatorDisplayName} started a huddle", hintStyle: AdaptiveTextStyle.Title)
             .AddText(channelDisplay, hintStyle: AdaptiveTextStyle.Body)

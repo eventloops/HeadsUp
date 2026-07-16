@@ -5,23 +5,30 @@ using SlackHuddleNotifier.Configuration;
 using SlackHuddleNotifier.Models;
 using SlackNet;
 using SlackNet.Events;
+using System.Collections.Concurrent;
 
 namespace SlackHuddleNotifier.Services;
 
 /// <summary>
 /// Connects to Slack via Socket Mode and raises <see cref="HuddleStarted"/> whenever
-/// a huddle_call_started (or huddle channel message) is detected.
+/// a huddle start is detected. Slack surfaces huddle starts as channel messages with
+/// subtype "huddle_thread" (and legacy calls as "sh_room_created"), so this class is
+/// registered with SlackNet as an <see cref="IEventHandler{MessageEvent}"/>.
 /// </summary>
-public sealed class SlackHuddleMonitor : IHuddleEventSource, IHostedService, IAsyncDisposable
+public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<MessageEvent>, IHostedService
 {
+    /// <summary>Cooldown before a new huddle in the same channel fires another notification.</summary>
+    private static readonly TimeSpan DedupeCooldown = TimeSpan.FromMinutes(5);
+
     private readonly ISlackSocketModeClient _socketClient;
     private readonly ISlackApiClient _apiClient;
     private readonly SlackOptions _slackOptions;
     private readonly ILogger<SlackHuddleMonitor> _logger;
 
-    // Track channels that already have an active huddle to avoid duplicate events.
-    private readonly HashSet<string> _activeHuddleChannels = [];
-    private readonly SemaphoreSlim _lock = new(1, 1);
+    // Channel ID -> last time we notified for it, to avoid duplicate events.
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _recentHuddles = new();
+
+    private string? _teamId;
 
     public event EventHandler<HuddleEvent>? HuddleStarted;
 
@@ -48,41 +55,46 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IHostedService, IAs
             return;
         }
 
-        _socketClient.On<MessageEvent>(HandleMessageEventAsync);
-        _socketClient.On<HuddleCallStartedEvent>(HandleHuddleCallStartedAsync);
-
-        await _socketClient.Connect(cancellationToken);
+        await _socketClient.Connect(cancellationToken: cancellationToken);
         _logger.LogInformation("Connected to Slack via Socket Mode.");
-    }
 
-    public async Task StopAsync(CancellationToken cancellationToken)
-    {
-        await _socketClient.Disconnect();
-        _logger.LogInformation("Disconnected from Slack.");
-    }
-
-    // ------------------------------------------------------------------
-    // Event handlers
-    // ------------------------------------------------------------------
-
-    private async Task HandleHuddleCallStartedAsync(HuddleCallStartedEvent e)
-    {
-        // HuddleCallStartedEvent is a dedicated event type from SlackNet (if available).
-        _logger.LogDebug("HuddleCallStarted event received. Channel={Channel}", e.ChannelId);
-        await RaiseHuddleEventAsync(e.InitiatorUserId, e.ChannelId);
-    }
-
-    private async Task HandleMessageEventAsync(MessageEvent msg)
-    {
-        // Huddle start also surfaces as a message with subtype "huddle_thread"
-        // or as a message whose thread_ts matches a huddle channel thread.
-        // We inspect the raw payload for the "huddle" property as a fallback.
-        if (msg.Subtype is "huddle_thread" or "sh_room_created")
+        try
         {
-            _logger.LogDebug("Huddle-related message detected. Channel={Channel} Subtype={Subtype}",
-                msg.Channel, msg.Subtype);
-            await RaiseHuddleEventAsync(msg.User, msg.Channel);
+            var auth = await _apiClient.Auth.Test();
+            _teamId = auth.TeamId;
         }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "auth.test failed; huddle links will omit the team id.");
+        }
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        if (_socketClient.Connected)
+        {
+            _socketClient.Disconnect();
+            _logger.LogInformation("Disconnected from Slack.");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    // ------------------------------------------------------------------
+    // SlackNet event handler
+    // ------------------------------------------------------------------
+
+    public async Task Handle(MessageEvent slackEvent)
+    {
+        // Huddle starts surface as a channel message with subtype "huddle_thread";
+        // legacy Slack Calls use "sh_room_created".
+        if (slackEvent.Subtype is not ("huddle_thread" or "sh_room_created"))
+            return;
+
+        _logger.LogDebug("Huddle-related message detected. Channel={Channel} Subtype={Subtype}",
+            slackEvent.Channel, slackEvent.Subtype);
+
+        await RaiseHuddleEventAsync(slackEvent.User, slackEvent.Channel);
     }
 
     private async Task RaiseHuddleEventAsync(string? userId, string? channelId)
@@ -90,34 +102,35 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IHostedService, IAs
         if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(channelId))
             return;
 
-        await _lock.WaitAsync();
-        try
+        var now = DateTimeOffset.Now;
+        var lastSeen = _recentHuddles.GetOrAdd(channelId, now);
+        if (lastSeen != now && now - lastSeen < DedupeCooldown)
         {
-            if (!_activeHuddleChannels.Add(channelId))
-            {
-                _logger.LogDebug("Huddle already active in channel {Channel}; skipping.", channelId);
-                return;
-            }
+            _logger.LogDebug("Huddle already active in channel {Channel}; skipping.", channelId);
+            return;
         }
-        finally
-        {
-            _lock.Release();
-        }
+        _recentHuddles[channelId] = now;
 
         try
         {
-            var (displayName, channelName) = await ResolveNamesAsync(userId, channelId);
+            var (displayName, channelName, isDm) = await ResolveNamesAsync(userId, channelId);
             var isPriority = _slackOptions.PriorityUsers.Contains(userId, StringComparer.OrdinalIgnoreCase);
-            var huddleLink = $"slack://channel?team=&id={channelId}";
+
+            // With a team id Slack can deep-link straight into the huddle;
+            // otherwise fall back to opening the channel.
+            var huddleLink = string.IsNullOrEmpty(_teamId)
+                ? $"slack://channel?id={channelId}"
+                : $"https://app.slack.com/huddle/{_teamId}/{channelId}";
 
             var huddleEvent = new HuddleEvent(
                 InitiatorUserId: userId,
                 InitiatorDisplayName: displayName,
                 ChannelId: channelId,
                 ChannelName: channelName,
+                IsDirectMessage: isDm,
                 HuddleLink: huddleLink,
                 IsPriorityUser: isPriority,
-                OccurredAt: DateTimeOffset.Now);
+                OccurredAt: now);
 
             _logger.LogInformation(
                 "Huddle started by {User} in {Channel}{Priority}.",
@@ -125,16 +138,6 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IHostedService, IAs
                 isPriority ? " [PRIORITY]" : string.Empty);
 
             HuddleStarted?.Invoke(this, huddleEvent);
-
-            // Remove the channel from the active set after a cooldown so that
-            // a second huddle in the same channel later will fire again.
-            _ = Task.Delay(TimeSpan.FromMinutes(5))
-                    .ContinueWith(_ =>
-                    {
-                        _lock.Wait();
-                        try { _activeHuddleChannels.Remove(channelId); }
-                        finally { _lock.Release(); }
-                    });
         }
         catch (Exception ex)
         {
@@ -142,18 +145,20 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IHostedService, IAs
         }
     }
 
-    private async Task<(string DisplayName, string ChannelName)> ResolveNamesAsync(
+    private async Task<(string DisplayName, string ChannelName, bool IsDm)> ResolveNamesAsync(
         string userId, string channelId)
     {
         string displayName = userId;
         string channelName = channelId;
+        bool isDm = channelId.StartsWith('D');
 
         try
         {
             var userInfo = await _apiClient.Users.Info(userId);
-            displayName = userInfo?.Profile?.DisplayName
-                          ?? userInfo?.Profile?.RealName
-                          ?? userId;
+            displayName = FirstNonEmpty(
+                userInfo?.Profile?.DisplayName,
+                userInfo?.Profile?.RealName,
+                userInfo?.Name) ?? userId;
         }
         catch (Exception ex)
         {
@@ -163,22 +168,20 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IHostedService, IAs
         try
         {
             var convInfo = await _apiClient.Conversations.Info(channelId);
-            channelName = convInfo?.Name ?? channelId;
+            if (convInfo is not null)
+            {
+                isDm = convInfo.IsIm;
+                channelName = FirstNonEmpty(convInfo.Name) ?? channelId;
+            }
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Could not resolve channel name for {ChannelId}.", channelId);
         }
 
-        return (displayName, channelName);
+        return (displayName, channelName, isDm);
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        _lock.Dispose();
-        if (_socketClient is IAsyncDisposable ad)
-            await ad.DisposeAsync();
-        else if (_socketClient is IDisposable d)
-            d.Dispose();
-    }
+    private static string? FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
 }

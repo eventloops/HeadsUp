@@ -13,6 +13,8 @@
         WindowStartupLocation="Manual">
 
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
         <Style x:Key="PrimaryButton" TargetType="Button">
             <Setter Property="Background" Value="#4A154B"/>
             <Setter Property="Foreground" Value="White"/>
@@ -70,8 +72,7 @@
 
     <Border CornerRadius="12"
             Background="White"
-            Margin="8"
-            Effect="{DynamicResource {x:Static SystemParameters.DropShadowKey}}">
+            Margin="8">
         <Border.Effect>
             <DropShadowEffect Color="Black" Opacity="0.25" BlurRadius="20" ShadowDepth="4" Direction="270"/>
         </Border.Effect>
@@ -96,7 +97,7 @@
                     </Style>
                 </Border.Style>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="??" FontSize="20" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBlock Text="&#x1F3A7;" FontSize="20" VerticalAlignment="Center" Margin="0,0,10,0"/>
                     <StackPanel>
                         <TextBlock Text="Slack Huddle Started"
                                    Foreground="White"
@@ -107,13 +108,13 @@
                                    Foreground="#FFD700"
                                    FontSize="10"
                                    FontWeight="Bold"
-                                   Visibility="{Binding IsPriorityUser, Converter={x:Static BooleanToVisibilityConverter}}"/>
+                                   Visibility="{Binding IsPriorityUser, Converter={StaticResource BoolToVis}}"/>
                     </StackPanel>
                 </StackPanel>
             </Border>
 
             <!-- Body -->
-            <StackPanel Grid.Row="1" Padding="20,16">
+            <StackPanel Grid.Row="1" Margin="20,16">
                 <TextBlock Text="{Binding InitiatorName}"
                            FontSize="20"
                            FontWeight="Bold"
@@ -141,7 +142,7 @@
                         Command="{Binding DismissCommand}"
                         Margin="0,0,10,0"/>
                 <Button Style="{StaticResource PrimaryButton}"
-                        Content="Join Huddle ??"
+                        Content="Join Huddle"
                         Command="{Binding JoinHuddleCommand}"/>
             </StackPanel>
         </Grid>

@@ -8,6 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>12</LangVersion>
     <AssemblyName>SlackHuddleNotifier</AssemblyName>
+    <!-- WPF auto-generates App.Main; use our explicit entry point instead. -->
+    <StartupObject>SlackHuddleNotifier.Program</StartupObject>
     <RootNamespace>SlackHuddleNotifier</RootNamespace>
     <ApplicationIcon>Assets\tray.ico</ApplicationIcon>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -24,8 +26,8 @@
     <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
-    <PackageReference Include="SlackNet" Version="2.10.0" />
-    <PackageReference Include="SlackNet.Extensions.DependencyInjection" Version="2.10.0" />
+    <PackageReference Include="SlackNet" Version="0.17.10" />
+    <PackageReference Include="SlackNet.Extensions.DependencyInjection" Version="0.17.10" />
     <!-- System tray icon support -->
     <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="2.0.1" />
   </ItemGroup>
@@ -34,9 +36,11 @@
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Assets\tray.ico">
+    <!-- Embedded as a WPF resource so the tray icon's pack URI (/Assets/tray.ico) resolves,
+         and copied to output so the toast logo can reference it on disk. -->
+    <Resource Include="Assets\tray.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    </Resource>
   </ItemGroup>
 
 </Project>

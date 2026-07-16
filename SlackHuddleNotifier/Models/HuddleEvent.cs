@@ -6,6 +6,7 @@ public sealed record HuddleEvent(
     string InitiatorDisplayName,
     string ChannelId,
     string ChannelName,
+    bool IsDirectMessage,
     string HuddleLink,
     bool IsPriorityUser,
     DateTimeOffset OccurredAt);

@@ -16,7 +16,7 @@
                 <ContextMenu>
                     <MenuItem Header="{Binding StatusText}" IsEnabled="False" FontWeight="SemiBold"/>
                     <Separator/>
-                    <MenuItem Header="About…" Command="{Binding ShowAboutCommand}"/>
+                    <MenuItem Header="About..." Command="{Binding ShowAboutCommand}"/>
                     <Separator/>
                     <MenuItem Header="Exit" Command="{Binding ExitCommand}"/>
                 </ContextMenu>

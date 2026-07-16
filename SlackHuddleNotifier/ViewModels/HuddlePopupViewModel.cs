@@ -26,7 +26,7 @@ public sealed partial class HuddlePopupViewModel : ObservableObject
     public void Populate(HuddleEvent huddle)
     {
         InitiatorName = huddle.InitiatorDisplayName;
-        ChannelDisplay = huddle.ChannelName.StartsWith('D')
+        ChannelDisplay = huddle.IsDirectMessage
             ? $"DM with {huddle.InitiatorDisplayName}"
             : $"#{huddle.ChannelName}";
         TimeDisplay = huddle.OccurredAt.ToLocalTime().ToString("h:mm tt");

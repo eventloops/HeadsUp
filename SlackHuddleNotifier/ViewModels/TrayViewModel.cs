@@ -7,7 +7,7 @@ namespace SlackHuddleNotifier.ViewModels;
 public sealed partial class TrayViewModel : ObservableObject
 {
     [ObservableProperty]
-    private string _statusText = "Connecting…";
+    private string _statusText = "Connecting...";
 
     [ObservableProperty]
     private bool _isConnected;

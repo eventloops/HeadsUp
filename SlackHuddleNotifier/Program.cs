@@ -7,6 +7,7 @@ using SlackHuddleNotifier.Configuration;
 using SlackHuddleNotifier.Services;
 using SlackHuddleNotifier.ViewModels;
 using SlackHuddleNotifier.Views;
+using SlackNet.Events;
 using SlackNet.Extensions.DependencyInjection;
 using System.IO;
 using System.Windows;
@@ -35,7 +36,7 @@ internal static class Program
 
         try
         {
-            Log.Information("Starting Slack Huddle Notifier…");
+            Log.Information("Starting Slack Huddle Notifier...");
 
             // WPF requires STA and its own startup path.
             var app = new App();
@@ -71,12 +72,14 @@ internal static class Program
                 services.Configure<SlackOptions>(ctx.Configuration.GetSection(SlackOptions.SectionName));
                 services.Configure<NotificationOptions>(ctx.Configuration.GetSection(NotificationOptions.SectionName));
 
-                // SlackNet – Socket Mode client
+                // SlackNet - Socket Mode client. The huddle monitor doubles as the
+                // message event handler, so resolve the same singleton instance.
                 var slackOpts = ctx.Configuration.GetSection(SlackOptions.SectionName).Get<SlackOptions>() ?? new();
                 services.AddSlackNet(c =>
                 {
                     c.UseApiToken(slackOpts.BotToken);
                     c.UseAppLevelToken(slackOpts.AppToken);
+                    c.RegisterEventHandler<MessageEvent>(sp => sp.GetRequiredService<SlackHuddleMonitor>());
                 });
 
                 // Core services
