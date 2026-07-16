@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Events;
+using SlackHuddleNotifier.Configuration;
 using SlackHuddleNotifier.Services;
 using SlackHuddleNotifier.ViewModels;
 using SlackHuddleNotifier.Views;
@@ -64,8 +65,22 @@ internal static class Program
             })
             .ConfigureServices((ctx, services) =>
             {
-                // Platform-neutral pipeline (options, SlackNet, monitor, coordinator).
+                // Platform-neutral pipeline (options, coordinator).
                 services.AddSlackHuddleNotifierCore(ctx.Configuration);
+
+                // Detection source: Slack API (default) or Slack's own Windows toasts.
+                var detection = ctx.Configuration.GetSection(DetectionOptions.SectionName)
+                    .Get<DetectionOptions>() ?? new();
+                if (detection.UseWindowsNotifications)
+                {
+                    services.AddSingleton<WindowsNotificationHuddleSource>();
+                    services.AddSingleton<IHuddleEventSource>(sp => sp.GetRequiredService<WindowsNotificationHuddleSource>());
+                    services.AddHostedService(sp => sp.GetRequiredService<WindowsNotificationHuddleSource>());
+                }
+                else
+                {
+                    services.AddSlackApiHuddleDetection(ctx.Configuration);
+                }
 
                 // Windows presentation layer.
                 services.AddSingleton<INotificationService, WpfNotificationService>();

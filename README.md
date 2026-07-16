@@ -74,7 +74,27 @@ cd SlackHuddleNotifier
 Installs to `~/Applications/SlackHuddleNotifier`. The build RID is
 auto-detected (Apple Silicon vs Intel).
 
-## Slack app setup (one-time, per person)
+## Two detection modes
+
+| | `SlackApi` (default) | `WindowsNotifications` |
+|---|---|---|
+| Setup | Create a Slack app + tokens (below) | None |
+| Platforms | Windows + macOS/Linux | Windows only |
+| Detects | Every huddle in your conversations, reliably | Only huddles Slack shows a toast for (muted channels/paused notifications = nothing) |
+| Details | Real names, avatar, working join link | Parsed from notification text; no avatar; join opens Slack |
+
+Set the mode in `appsettings.json`:
+
+```json
+{ "Detection": { "Mode": "SlackApi" } }
+```
+
+With `WindowsNotifications`, no Slack tokens are needed at all — the app
+watches the toasts Slack itself posts and re-raises them as big popups. On
+first run, allow notification access if prompted (Windows Settings → Privacy
+& security → Notifications → "Let apps access notifications").
+
+## Slack app setup (one-time, per person — `SlackApi` mode only)
 
 The app connects **as you** (a user token), so huddles are detected in exactly
 the channels, group DMs, and DMs you are a member of — including DM huddles —

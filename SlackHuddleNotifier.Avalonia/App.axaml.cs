@@ -57,6 +57,7 @@ public partial class App : Application
             .ConfigureServices((ctx, services) =>
             {
                 services.AddSlackHuddleNotifierCore(ctx.Configuration);
+                services.AddSlackApiHuddleDetection(ctx.Configuration);
                 services.AddSingleton<INotificationService, AvaloniaNotificationService>();
             })
             .Build();
