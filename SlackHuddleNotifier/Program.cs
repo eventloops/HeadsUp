@@ -81,6 +81,14 @@ internal static class Program
                 }
                 else if (detection.UseSlackClientApi)
                 {
+                    // WebView2 credentials survive rotation but are Windows-only, so they're
+                    // registered here in the WPF head (before the core call, whose TryAdd then
+                    // leaves this provider in place instead of the config one).
+                    var clientOpts = ctx.Configuration.GetSection(SlackClientOptions.SectionName)
+                        .Get<SlackClientOptions>() ?? new();
+                    if (clientOpts.UseWebViewCredentials)
+                        services.AddSingleton<ISlackCredentialProvider, WebView2SlackCredentialProvider>();
+
                     services.AddSlackClientApiHuddleDetection(ctx.Configuration);
                 }
                 else

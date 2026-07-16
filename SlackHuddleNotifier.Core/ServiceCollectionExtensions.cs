@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using SlackHuddleNotifier.Configuration;
 using SlackHuddleNotifier.Services;
 using SlackNet.Events;
@@ -60,6 +61,11 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<SlackClientOptions>(configuration.GetSection(SlackClientOptions.SectionName));
+
+        // Default credential source is static config (browser-paste). A platform head may
+        // register a live ISlackCredentialProvider (e.g. WebView2) BEFORE calling this, and
+        // TryAdd leaves that one in place.
+        services.TryAddSingleton<ISlackCredentialProvider, ConfigSlackCredentialProvider>();
 
         services.AddSingleton<SlackWebHuddleSource>();
         services.AddSingleton<IHuddleEventSource>(sp => sp.GetRequiredService<SlackWebHuddleSource>());

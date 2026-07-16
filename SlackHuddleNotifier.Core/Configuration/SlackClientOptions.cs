@@ -25,4 +25,15 @@ public sealed class SlackClientOptions
     /// come back with auth errors on the shared host.
     /// </summary>
     public string WorkspaceUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Where credentials come from:
+    ///   "Config"   - the pasted <see cref="ClientToken"/>/<see cref="Cookie"/> above (default).
+    ///   "WebView2" - the Windows head hosts a Slack sign-in and reads the token/cookie
+    ///                live from that session, surviving rotation (no manual paste).
+    /// </summary>
+    public string CredentialSource { get; set; } = "Config";
+
+    public bool UseWebViewCredentials =>
+        string.Equals(CredentialSource, "WebView2", StringComparison.OrdinalIgnoreCase);
 }

@@ -36,7 +36,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
     private static readonly TimeSpan PingInterval = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan ReconnectDelay = TimeSpan.FromSeconds(10);
 
-    private readonly SlackClientOptions _clientOptions;
+    private readonly ISlackCredentialProvider _credentials;
     private readonly SlackOptions _slackOptions;
     private readonly ILogger<SlackWebHuddleSource> _logger;
 
@@ -51,65 +51,27 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
     public event EventHandler<HuddleEvent>? HuddleStarted;
 
     public SlackWebHuddleSource(
-        IOptions<SlackClientOptions> clientOptions,
+        ISlackCredentialProvider credentials,
         IOptions<SlackOptions> slackOptions,
         ILogger<SlackWebHuddleSource> logger)
     {
-        _clientOptions = clientOptions.Value;
+        _credentials = credentials;
         _slackOptions = slackOptions.Value;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (string.IsNullOrWhiteSpace(_clientOptions.ClientToken) ||
-            string.IsNullOrWhiteSpace(_clientOptions.Cookie))
-        {
-            _logger.LogWarning(
-                "SlackClient credentials are not configured. Set SlackClient:ClientToken " +
-                "(xoxc-...) and SlackClient:Cookie (the 'd' cookie) in appsettings.json and " +
-                "restart. See the README for how to extract them.");
-            return;
-        }
-
-        _client = new SlackWebClient(
-            _clientOptions.ClientToken, _clientOptions.Cookie, _clientOptions.WorkspaceUrl);
-
-        // auth.test doubles as a credential check and gives us the team/self ids.
-        try
-        {
-            var auth = await _client.AuthTestAsync(stoppingToken);
-            if (!auth.Bool("ok"))
-            {
-                _logger.LogError(
-                    "Slack auth.test failed: {Error}. The session is likely expired or the token/" +
-                    "cookie is wrong - re-extract both from a logged-in Slack session.",
-                    auth.Str("error") ?? "unknown");
-                return;
-            }
-
-            _teamId = auth.Str("team_id");
-            _selfUserId = auth.Str("user_id");
-            _logger.LogInformation(
-                "Slack client session OK: authenticated as {User} in team {Team}.",
-                auth.Str("user"), auth.Str("team"));
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Slack auth.test call failed.");
-            return;
-        }
-
-        // Connect / reconnect loop: rtm.connect hands back a fresh URL each time.
+        // Outer loop: (re)acquire credentials, authenticate, then run the socket until it
+        // drops. A missing or rejected credential forces a refresh on the next round, which
+        // is how session rotation is absorbed when a live provider (e.g. WebView2) is used.
+        var refreshNext = false;
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                await RunConnectionAsync(stoppingToken);
+                // ConnectAndRunAsync returns false when creds are missing/rejected.
+                refreshNext = !await ConnectAndRunAsync(refreshNext, stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -117,8 +79,11 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
             }
             catch (Exception ex)
             {
+                // A dropped socket lands here; keep the same creds and let the next
+                // auth.test decide whether they have actually gone stale.
                 _logger.LogWarning(ex, "Slack client connection ended; retrying in {Delay}s.",
                     ReconnectDelay.TotalSeconds);
+                refreshNext = false;
             }
 
             try
@@ -130,6 +95,45 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
                 break;
             }
         }
+    }
+
+    /// <summary>
+    /// Fetches credentials, authenticates, and runs one WebSocket session to completion.
+    /// Returns <c>false</c> when credentials are missing or rejected (caller should force a
+    /// refresh next round); <c>true</c> after a session ran and ended of its own accord.
+    /// </summary>
+    private async Task<bool> ConnectAndRunAsync(bool forceRefresh, CancellationToken stoppingToken)
+    {
+        var creds = await _credentials.GetCredentialsAsync(forceRefresh, stoppingToken);
+        if (creds is null)
+        {
+            _logger.LogWarning(
+                "No Slack credentials available yet from {Source}; waiting {Delay}s before retry.",
+                _credentials.SourceDescription, ReconnectDelay.TotalSeconds);
+            return false;
+        }
+
+        _client?.Dispose();
+        _client = new SlackWebClient(creds.Token, creds.Cookie, creds.WorkspaceUrl);
+
+        // auth.test doubles as a credential check and gives us the team/self ids.
+        var auth = await _client.AuthTestAsync(stoppingToken);
+        if (!auth.Bool("ok"))
+        {
+            _logger.LogWarning(
+                "Slack auth.test failed: {Error}. Refreshing credentials from {Source} and retrying.",
+                auth.Str("error") ?? "unknown", _credentials.SourceDescription);
+            return false;
+        }
+
+        _teamId = auth.Str("team_id");
+        _selfUserId = auth.Str("user_id");
+        _logger.LogInformation(
+            "Slack client session OK: authenticated as {User} in team {Team}.",
+            auth.Str("user"), auth.Str("team"));
+
+        await RunConnectionAsync(stoppingToken);
+        return true;
     }
 
     private async Task RunConnectionAsync(CancellationToken stoppingToken)
