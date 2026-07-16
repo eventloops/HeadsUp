@@ -23,7 +23,9 @@ system tray (Windows) or menu bar (macOS).
    is self-contained, so the SDK is only needed to build):
    - Windows: `winget install Microsoft.DotNet.SDK.8`
    - macOS: `brew install dotnet-sdk` or the installer from dotnet.microsoft.com
-2. **A Slack app** for your workspace (one-time setup, shareable) — see below.
+2. **Detection credentials**, which depend on the mode you pick (see *Three
+   detection modes* below): a Slack app for `SlackApi`, your browser session for
+   `SlackClientApi`, or nothing at all for `WindowsNotifications`.
 
 ## Install
 
@@ -74,14 +76,16 @@ cd SlackHuddleNotifier
 Installs to `~/Applications/SlackHuddleNotifier`. The build RID is
 auto-detected (Apple Silicon vs Intel).
 
-## Two detection modes
+## Three detection modes
 
-| | `SlackApi` (default) | `WindowsNotifications` |
-|---|---|---|
-| Setup | Create a Slack app + tokens (below) | None |
-| Platforms | Windows + macOS/Linux | Windows only |
-| Detects | Every huddle in your conversations, reliably | Only huddles Slack shows a toast for (muted channels/paused notifications = nothing) |
-| Details | Real names, avatar, working join link | Parsed from notification text; no avatar; join opens Slack |
+| | `SlackApi` (default) | `SlackClientApi` | `WindowsNotifications` |
+|---|---|---|---|
+| Setup | Create a Slack app + tokens (below) | Paste your browser session token + cookie (below) | None |
+| Admin approval | Needed to install the app | **None** | None |
+| Platforms | Windows + macOS/Linux | Windows + macOS/Linux | Windows only |
+| Detects | Every huddle in your conversations, reliably | Every huddle in your conversations | Only huddles Slack shows a toast for (muted channels/paused notifications = nothing) |
+| Details | Real names, avatar, working join link | Real names, avatar, working join link | Parsed from notification text; no avatar; join opens Slack |
+| Caveats | Official, stable | Unofficial API; can break when Slack changes, and technically against Slack's ToS | Stable, but misses muted/paused huddles |
 
 Set the mode in `appsettings.json`:
 
@@ -117,6 +121,65 @@ with no bot to invite anywhere. Huddles you start yourself are ignored.
    `message.channels`, `message.groups`, `message.im`, `message.mpim`.
 5. **Install App** to the workspace → copy the **User OAuth Token**
    (`xoxp-...`).
+
+## Slack client-session setup (`SlackClientApi` mode)
+
+This mode borrows the session your browser (or the Slack desktop app) is
+already logged into — **no Slack app to create and no admin approval**. It's a
+prototype: the endpoints are undocumented and can change without warning, and
+automating Slack with a session token is against Slack's Terms of Service. Fine
+for a personal notifier while you wait for app approval; know what it is before
+you lean on it.
+
+You need two values from a Slack session **in your browser** (the desktop app
+holds the same two, but the browser is the easiest place to read them):
+
+1. **Client token (`xoxc-…`)** — open Slack in your browser, open DevTools
+   (F12) → **Console**, and run:
+
+   ```js
+   JSON.parse(localStorage.localConfig_v2).teams[
+     Object.keys(JSON.parse(localStorage.localConfig_v2).teams)[0]
+   ].token
+   ```
+
+   Copy the `xoxc-…` string it prints. (In more than one workspace? Pick the
+   right team key instead of the first one.)
+
+2. **`d` cookie (`xoxd-…`)** — it's HttpOnly, so the console can't read it. In
+   DevTools → **Application** → **Cookies** → your Slack domain, copy the
+   **Value** of the cookie named `d`.
+
+Put both in `appsettings.json` and set the mode:
+
+```json
+{
+  "Detection": { "Mode": "SlackClientApi" },
+  "SlackClient": {
+    "ClientToken": "xoxc-...",
+    "Cookie": "xoxd-...",
+    "WorkspaceUrl": "https://yourworkspace.slack.com"
+  }
+}
+```
+
+`WorkspaceUrl` is optional (defaults to `https://slack.com`); set it if calls
+come back with auth errors. Priority users are shared with `Slack:PriorityUsers`.
+
+**Confirm it works before relying on it.** Tokens expire when your session
+rotates (SSO especially), so verify end-to-end. Start the app from a terminal
+and watch the log:
+
+```powershell
+Get-Content -Wait "$env:LocalAppData\SlackHuddleNotifier\logs\log-*.txt" |
+  Select-String "session OK","WebSocket","Huddle","rtm","auth.test"
+```
+
+You want `Slack client session OK` followed by `Connected to Slack real-time
+WebSocket`. Then have someone start a huddle — or start one yourself: your own
+huddles log a `Huddle signal received` line (confirming the signal) but are
+deliberately suppressed from popups. If you see `auth.test failed` or
+`rtm.connect failed` instead, re-extract both values and try again.
 
 ## Configure
 

@@ -77,6 +77,10 @@ internal static class Program
                     services.AddSingleton<IHuddleEventSource>(sp => sp.GetRequiredService<WindowsNotificationHuddleSource>());
                     services.AddHostedService(sp => sp.GetRequiredService<WindowsNotificationHuddleSource>());
                 }
+                else if (detection.UseSlackClientApi)
+                {
+                    services.AddSlackClientApiHuddleDetection(ctx.Configuration);
+                }
                 else
                 {
                     services.AddSlackApiHuddleDetection(ctx.Configuration);

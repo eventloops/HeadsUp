@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Events;
 using SlackHuddleNotifier.AvaloniaApp.Services;
+using SlackHuddleNotifier.Configuration;
 using SlackHuddleNotifier.Models;
 using SlackHuddleNotifier.Services;
 using System.IO;
@@ -57,7 +58,16 @@ public partial class App : Application
             .ConfigureServices((ctx, services) =>
             {
                 services.AddSlackHuddleNotifierCore(ctx.Configuration);
-                services.AddSlackApiHuddleDetection(ctx.Configuration);
+
+                // Detection source: unofficial client API or the user's own Slack app.
+                // (WindowsNotifications is Windows-only and lives in the WPF head.)
+                var detection = ctx.Configuration.GetSection(DetectionOptions.SectionName)
+                    .Get<DetectionOptions>() ?? new();
+                if (detection.UseSlackClientApi)
+                    services.AddSlackClientApiHuddleDetection(ctx.Configuration);
+                else
+                    services.AddSlackApiHuddleDetection(ctx.Configuration);
+
                 services.AddSingleton<INotificationService, AvaloniaNotificationService>();
             })
             .Build();

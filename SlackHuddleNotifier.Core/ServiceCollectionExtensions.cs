@@ -49,4 +49,22 @@ public static class ServiceCollectionExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// Detection via the unofficial Slack client API: an xoxc client token plus
+    /// the "d" session cookie, exactly what a browser/desktop session uses. No
+    /// Slack app and no admin approval required. Prototype - see
+    /// <see cref="Services.SlackWebHuddleSource"/> for the caveats.
+    /// </summary>
+    public static IServiceCollection AddSlackClientApiHuddleDetection(
+        this IServiceCollection services, IConfiguration configuration)
+    {
+        services.Configure<SlackClientOptions>(configuration.GetSection(SlackClientOptions.SectionName));
+
+        services.AddSingleton<SlackWebHuddleSource>();
+        services.AddSingleton<IHuddleEventSource>(sp => sp.GetRequiredService<SlackWebHuddleSource>());
+        services.AddHostedService(sp => sp.GetRequiredService<SlackWebHuddleSource>());
+
+        return services;
+    }
 }
