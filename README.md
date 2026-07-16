@@ -112,6 +112,17 @@ Edit `appsettings.json` in the install directory:
 - `SoundFilePath` — optional custom sound (`.wav` on Windows, `.aiff`/`.wav`
   on macOS); leave empty for the system default.
 
+## Running in the background
+
+The app is tray-only: no window opens at launch — look for the headset icon
+in the system tray (Windows) or menu bar (macOS). Popups appear only when a
+huddle starts; right-click the icon for status, test notification, and exit.
+
+Starting automatically is **opt-in**: install with `-Autostart` (Windows) or
+`--autostart` (macOS) and it will launch when you sign in. Already installed
+without it? Just re-run the install script with the flag — settings are
+preserved. It starts at *sign-in*, not machine boot, as befits a per-user app.
+
 ## Try it without Slack
 
 Preview the popup without any tokens configured:
