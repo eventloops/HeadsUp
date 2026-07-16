@@ -53,7 +53,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
         })()
         """;
 
-    private readonly SlackClientOptions _options;
+    private readonly IOptionsMonitor<SlackClientOptions> _options;
     private readonly ILogger<WebView2SlackCredentialProvider> _logger;
     private readonly Dispatcher _dispatcher;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -64,10 +64,10 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
     private bool _navigated;
 
     public WebView2SlackCredentialProvider(
-        IOptions<SlackClientOptions> options,
+        IOptionsMonitor<SlackClientOptions> options,
         ILogger<WebView2SlackCredentialProvider> logger)
     {
-        _options = options.Value;
+        _options = options;
         _logger = logger;
         _dispatcher = Application.Current?.Dispatcher
             ?? throw new InvalidOperationException(
@@ -106,7 +106,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
             {
                 // The workspace URL redirects straight to that team's sign-in (SSO), which is
                 // friendlier than app.slack.com (which bounces a signed-out user to marketing).
-                var startUrl = string.IsNullOrWhiteSpace(_options.WorkspaceUrl) ? SlackUrl : _options.WorkspaceUrl;
+                var startUrl = string.IsNullOrWhiteSpace(_options.CurrentValue.WorkspaceUrl) ? SlackUrl : _options.CurrentValue.WorkspaceUrl;
                 _web!.CoreWebView2.Navigate(startUrl);
                 _navigated = true;
             }
@@ -139,7 +139,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
                 return null;
             }
 
-            return new SlackCredentials(token, cookie, _options.WorkspaceUrl);
+            return new SlackCredentials(token, cookie, _options.CurrentValue.WorkspaceUrl);
         }
         catch (OperationCanceledException)
         {

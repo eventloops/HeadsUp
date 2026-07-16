@@ -24,17 +24,17 @@ public sealed partial class WindowsNotificationHuddleSource : BackgroundService,
     [GeneratedRegex(@"^(?<name>.+?)\s+(?:started|is inviting)", RegexOptions.IgnoreCase)]
     private static partial Regex InitiatorRegex();
 
-    private readonly SlackOptions _slackOptions;
+    private readonly IOptionsMonitor<SlackOptions> _slackOptions;
     private readonly ILogger<WindowsNotificationHuddleSource> _logger;
     private readonly HashSet<uint> _seenIds = [];
 
     public event EventHandler<HuddleEvent>? HuddleStarted;
 
     public WindowsNotificationHuddleSource(
-        IOptions<SlackOptions> slackOptions,
+        IOptionsMonitor<SlackOptions> slackOptions,
         ILogger<WindowsNotificationHuddleSource> logger)
     {
-        _slackOptions = slackOptions.Value;
+        _slackOptions = slackOptions;
         _logger = logger;
     }
 
@@ -121,7 +121,7 @@ public sealed partial class WindowsNotificationHuddleSource : BackgroundService,
                       : !isChannel    ? title
                       : "Someone";
 
-        var isPriority = _slackOptions.PriorityUsers.Contains(initiator, StringComparer.OrdinalIgnoreCase);
+        var isPriority = _slackOptions.CurrentValue.PriorityUsers.Contains(initiator, StringComparer.OrdinalIgnoreCase);
 
         _logger.LogInformation(
             "Huddle toast detected: {Initiator} in {Where}{Priority}.",

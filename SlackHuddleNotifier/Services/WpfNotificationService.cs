@@ -16,15 +16,15 @@ namespace SlackHuddleNotifier.Services;
 /// </summary>
 public sealed class WpfNotificationService : INotificationService
 {
-    private readonly NotificationOptions _options;
+    private readonly IOptionsMonitor<NotificationOptions> _options;
     private readonly ILogger<WpfNotificationService> _logger;
     private readonly Dispatcher _dispatcher;
 
     public WpfNotificationService(
-        IOptions<NotificationOptions> options,
+        IOptionsMonitor<NotificationOptions> options,
         ILogger<WpfNotificationService> logger)
     {
-        _options = options.Value;
+        _options = options;
         _logger = logger;
         _dispatcher = Application.Current.Dispatcher;
     }
@@ -47,6 +47,7 @@ public sealed class WpfNotificationService : INotificationService
 
     private void ShowPopup(HuddleEvent huddle)
     {
+        var options = _options.CurrentValue;
         var vm = new HuddlePopupViewModel();
         vm.Populate(huddle);
 
@@ -58,7 +59,7 @@ public sealed class WpfNotificationService : INotificationService
         // Auto-dismiss after configured duration.
         var timer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromSeconds(_options.ToastDurationSeconds)
+            Interval = TimeSpan.FromSeconds(options.ToastDurationSeconds)
         };
         timer.Tick += (_, _) =>
         {
@@ -73,7 +74,7 @@ public sealed class WpfNotificationService : INotificationService
         };
 
         window.AnimateIn();
-        window.StartCountdown(TimeSpan.FromSeconds(_options.ToastDurationSeconds));
+        window.StartCountdown(TimeSpan.FromSeconds(options.ToastDurationSeconds));
         timer.Start();
 
         _logger.LogDebug("WPF popup shown for huddle in {Channel}.", huddle.ChannelName);
@@ -81,15 +82,16 @@ public sealed class WpfNotificationService : INotificationService
 
     private void PlayAlertSound()
     {
-        if (!_options.PlaySound)
+        var options = _options.CurrentValue;
+        if (!options.PlaySound)
             return;
 
         try
         {
-            if (!string.IsNullOrWhiteSpace(_options.SoundFilePath) &&
-                File.Exists(_options.SoundFilePath))
+            if (!string.IsNullOrWhiteSpace(options.SoundFilePath) &&
+                File.Exists(options.SoundFilePath))
             {
-                using var player = new SoundPlayer(_options.SoundFilePath);
+                using var player = new SoundPlayer(options.SoundFilePath);
                 player.Play();
             }
             else

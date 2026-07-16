@@ -37,7 +37,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
     private static readonly TimeSpan ReconnectDelay = TimeSpan.FromSeconds(10);
 
     private readonly ISlackCredentialProvider _credentials;
-    private readonly SlackOptions _slackOptions;
+    private readonly IOptionsMonitor<SlackOptions> _slackOptions;
     private readonly ILogger<SlackWebHuddleSource> _logger;
 
     // Channel ID -> last time we notified for it, to avoid duplicate events.
@@ -52,11 +52,11 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
 
     public SlackWebHuddleSource(
         ISlackCredentialProvider credentials,
-        IOptions<SlackOptions> slackOptions,
+        IOptionsMonitor<SlackOptions> slackOptions,
         ILogger<SlackWebHuddleSource> logger)
     {
         _credentials = credentials;
-        _slackOptions = slackOptions.Value;
+        _slackOptions = slackOptions;
         _logger = logger;
     }
 
@@ -317,7 +317,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
             }
 
             var (displayName, avatarUrl) = await ResolveUserAsync(userId);
-            var isPriority = _slackOptions.PriorityUsers.Contains(userId, StringComparer.OrdinalIgnoreCase);
+            var isPriority = _slackOptions.CurrentValue.PriorityUsers.Contains(userId, StringComparer.OrdinalIgnoreCase);
 
             // With a team id Slack can deep-link straight into the huddle;
             // otherwise fall back to opening the channel.

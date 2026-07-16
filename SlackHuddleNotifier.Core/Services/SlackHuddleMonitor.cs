@@ -22,7 +22,7 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
 
     private readonly ISlackSocketModeClient _socketClient;
     private readonly ISlackApiClient _apiClient;
-    private readonly SlackOptions _slackOptions;
+    private readonly IOptionsMonitor<SlackOptions> _slackOptions;
     private readonly ILogger<SlackHuddleMonitor> _logger;
 
     // Channel ID -> last time we notified for it, to avoid duplicate events.
@@ -36,19 +36,20 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
     public SlackHuddleMonitor(
         ISlackSocketModeClient socketClient,
         ISlackApiClient apiClient,
-        IOptions<SlackOptions> slackOptions,
+        IOptionsMonitor<SlackOptions> slackOptions,
         ILogger<SlackHuddleMonitor> logger)
     {
         _socketClient = socketClient;
         _apiClient = apiClient;
-        _slackOptions = slackOptions.Value;
+        _slackOptions = slackOptions;
         _logger = logger;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(_slackOptions.AppToken) ||
-            string.IsNullOrWhiteSpace(_slackOptions.UserToken))
+        var slack = _slackOptions.CurrentValue;
+        if (string.IsNullOrWhiteSpace(slack.AppToken) ||
+            string.IsNullOrWhiteSpace(slack.UserToken))
         {
             _logger.LogWarning(
                 "Slack tokens are not configured. Edit appsettings.json and restart. " +
@@ -151,7 +152,7 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
             }
 
             var (displayName, avatarUrl) = await ResolveUserAsync(userId);
-            var isPriority = _slackOptions.PriorityUsers.Contains(userId, StringComparer.OrdinalIgnoreCase);
+            var isPriority = _slackOptions.CurrentValue.PriorityUsers.Contains(userId, StringComparer.OrdinalIgnoreCase);
 
             // With a team id Slack can deep-link straight into the huddle;
             // otherwise fall back to opening the channel.

@@ -34,18 +34,21 @@ public interface ISlackCredentialProvider
 /// </summary>
 public sealed class ConfigSlackCredentialProvider : ISlackCredentialProvider
 {
-    private readonly SlackClientOptions _options;
+    private readonly IOptionsMonitor<SlackClientOptions> _options;
 
-    public ConfigSlackCredentialProvider(IOptions<SlackClientOptions> options) => _options = options.Value;
+    public ConfigSlackCredentialProvider(IOptionsMonitor<SlackClientOptions> options) => _options = options;
 
     public string SourceDescription => "appsettings (SlackClient)";
 
     public Task<SlackCredentials?> GetCredentialsAsync(bool forceRefresh, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(_options.ClientToken) || string.IsNullOrWhiteSpace(_options.Cookie))
+        // Read current so a re-pasted token/cookie in appsettings takes effect on the next
+        // fetch (e.g. after an auth failure forces a refresh) without an app restart.
+        var o = _options.CurrentValue;
+        if (string.IsNullOrWhiteSpace(o.ClientToken) || string.IsNullOrWhiteSpace(o.Cookie))
             return Task.FromResult<SlackCredentials?>(null);
 
         return Task.FromResult<SlackCredentials?>(
-            new SlackCredentials(_options.ClientToken, _options.Cookie, _options.WorkspaceUrl));
+            new SlackCredentials(o.ClientToken, o.Cookie, o.WorkspaceUrl));
     }
 }

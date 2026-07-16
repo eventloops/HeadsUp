@@ -15,14 +15,14 @@ namespace SlackHuddleNotifier.AvaloniaApp.Services;
 /// </summary>
 public sealed class AvaloniaNotificationService : INotificationService
 {
-    private readonly NotificationOptions _options;
+    private readonly IOptionsMonitor<NotificationOptions> _options;
     private readonly ILogger<AvaloniaNotificationService> _logger;
 
     public AvaloniaNotificationService(
-        IOptions<NotificationOptions> options,
+        IOptionsMonitor<NotificationOptions> options,
         ILogger<AvaloniaNotificationService> logger)
     {
-        _options = options.Value;
+        _options = options;
         _logger = logger;
     }
 
@@ -51,7 +51,7 @@ public sealed class AvaloniaNotificationService : INotificationService
         window.SetPriority(huddle.IsPriorityUser);
         window.LoadAvatar(huddle.InitiatorAvatarUrl);
 
-        var lifetime = TimeSpan.FromSeconds(_options.ToastDurationSeconds);
+        var lifetime = TimeSpan.FromSeconds(_options.CurrentValue.ToastDurationSeconds);
         var timer = new DispatcherTimer { Interval = lifetime };
         timer.Tick += (_, _) =>
         {
@@ -74,13 +74,14 @@ public sealed class AvaloniaNotificationService : INotificationService
 
     private void PlayAlertSound()
     {
-        if (!_options.PlaySound)
+        var options = _options.CurrentValue;
+        if (!options.PlaySound)
             return;
 
         try
         {
-            var custom = !string.IsNullOrWhiteSpace(_options.SoundFilePath) && File.Exists(_options.SoundFilePath)
-                ? _options.SoundFilePath
+            var custom = !string.IsNullOrWhiteSpace(options.SoundFilePath) && File.Exists(options.SoundFilePath)
+                ? options.SoundFilePath
                 : null;
 
             if (OperatingSystem.IsMacOS())

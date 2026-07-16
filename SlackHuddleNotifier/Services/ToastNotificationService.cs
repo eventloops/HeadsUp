@@ -13,16 +13,16 @@ namespace SlackHuddleNotifier.Services;
 /// </summary>
 public sealed class ToastNotificationService : INotificationService
 {
-    private readonly NotificationOptions _options;
+    private readonly IOptionsMonitor<NotificationOptions> _options;
     private readonly ILogger<ToastNotificationService> _logger;
 
     private const string AppId = "SlackHuddleNotifier";
 
     public ToastNotificationService(
-        IOptions<NotificationOptions> options,
+        IOptionsMonitor<NotificationOptions> options,
         ILogger<ToastNotificationService> logger)
     {
-        _options = options.Value;
+        _options = options;
         _logger = logger;
     }
 
@@ -74,7 +74,7 @@ public sealed class ToastNotificationService : INotificationService
                 : ToastScenario.Default)
             .Show(toast =>
             {
-                toast.ExpirationTime = DateTimeOffset.Now.AddSeconds(_options.ToastDurationSeconds);
+                toast.ExpirationTime = DateTimeOffset.Now.AddSeconds(_options.CurrentValue.ToastDurationSeconds);
                 toast.Tag = $"huddle_{huddle.ChannelId}";
                 toast.Group = "Huddles";
             });
@@ -84,15 +84,16 @@ public sealed class ToastNotificationService : INotificationService
 
     private void PlayAlertSound()
     {
-        if (!_options.PlaySound)
+        var options = _options.CurrentValue;
+        if (!options.PlaySound)
             return;
 
         try
         {
-            if (!string.IsNullOrWhiteSpace(_options.SoundFilePath) &&
-                File.Exists(_options.SoundFilePath))
+            if (!string.IsNullOrWhiteSpace(options.SoundFilePath) &&
+                File.Exists(options.SoundFilePath))
             {
-                using var player = new SoundPlayer(_options.SoundFilePath);
+                using var player = new SoundPlayer(options.SoundFilePath);
                 player.Play();
             }
             else
