@@ -113,7 +113,7 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
 
         try
         {
-            var (displayName, channelName, isDm) = await ResolveNamesAsync(userId, channelId);
+            var (displayName, avatarUrl, channelName, isDm) = await ResolveNamesAsync(userId, channelId);
             var isPriority = _slackOptions.PriorityUsers.Contains(userId, StringComparer.OrdinalIgnoreCase);
 
             // With a team id Slack can deep-link straight into the huddle;
@@ -125,6 +125,7 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
             var huddleEvent = new HuddleEvent(
                 InitiatorUserId: userId,
                 InitiatorDisplayName: displayName,
+                InitiatorAvatarUrl: avatarUrl,
                 ChannelId: channelId,
                 ChannelName: channelName,
                 IsDirectMessage: isDm,
@@ -145,10 +146,11 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
         }
     }
 
-    private async Task<(string DisplayName, string ChannelName, bool IsDm)> ResolveNamesAsync(
+    private async Task<(string DisplayName, string? AvatarUrl, string ChannelName, bool IsDm)> ResolveNamesAsync(
         string userId, string channelId)
     {
         string displayName = userId;
+        string? avatarUrl = null;
         string channelName = channelId;
         bool isDm = channelId.StartsWith('D');
 
@@ -159,6 +161,9 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
                 userInfo?.Profile?.DisplayName,
                 userInfo?.Profile?.RealName,
                 userInfo?.Name) ?? userId;
+            avatarUrl = FirstNonEmpty(
+                userInfo?.Profile?.Image72,
+                userInfo?.Profile?.Image192);
         }
         catch (Exception ex)
         {
@@ -179,7 +184,7 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
             _logger.LogWarning(ex, "Could not resolve channel name for {ChannelId}.", channelId);
         }
 
-        return (displayName, channelName, isDm);
+        return (displayName, avatarUrl, channelName, isDm);
     }
 
     private static string? FirstNonEmpty(params string?[] values) =>

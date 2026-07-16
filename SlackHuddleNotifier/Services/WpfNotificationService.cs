@@ -73,6 +73,7 @@ public sealed class WpfNotificationService : INotificationService
         };
 
         window.AnimateIn();
+        window.StartCountdown(TimeSpan.FromSeconds(_options.ToastDurationSeconds));
         timer.Start();
 
         _logger.LogDebug("WPF popup shown for huddle in {Channel}.", huddle.ChannelName);

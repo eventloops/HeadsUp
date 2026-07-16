@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using SlackHuddleNotifier.Models;
 using SlackHuddleNotifier.Services;
 using SlackHuddleNotifier.ViewModels;
 using SlackHuddleNotifier.Views;
@@ -29,6 +30,22 @@ public partial class App : Application
         {
             await _host.StartAsync();
             trayVm.SetConnected(true);
+
+            // Preview the popup without a real huddle: --test-popup [--priority]
+            if (e.Args.Contains("--test-popup"))
+            {
+                var notifier = _host.Services.GetRequiredService<INotificationService>();
+                _ = notifier.ShowHuddleNotificationAsync(new HuddleEvent(
+                    InitiatorUserId: "U000TEST",
+                    InitiatorDisplayName: "Sarah Whitfield",
+                    InitiatorAvatarUrl: null,
+                    ChannelId: "C000TEST",
+                    ChannelName: "project-atlas",
+                    IsDirectMessage: false,
+                    HuddleLink: "https://slack.com",
+                    IsPriorityUser: e.Args.Contains("--priority"),
+                    OccurredAt: DateTimeOffset.Now));
+            }
         }
         catch (Exception ex)
         {

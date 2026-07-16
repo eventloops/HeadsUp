@@ -4,6 +4,7 @@ namespace SlackHuddleNotifier.Models;
 public sealed record HuddleEvent(
     string InitiatorUserId,
     string InitiatorDisplayName,
+    string? InitiatorAvatarUrl,
     string ChannelId,
     string ChannelName,
     bool IsDirectMessage,

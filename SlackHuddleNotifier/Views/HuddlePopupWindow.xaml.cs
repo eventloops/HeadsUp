@@ -22,6 +22,16 @@ public partial class HuddlePopupWindow : Window
         Top = workArea.Bottom - ActualHeight - 16;
     }
 
+    /// <summary>Shrinks the countdown bar from full width to zero over the popup lifetime.</summary>
+    public void StartCountdown(TimeSpan duration)
+    {
+        var animation = new System.Windows.Media.Animation.DoubleAnimation(1, 0, duration)
+        {
+            FillBehavior = System.Windows.Media.Animation.FillBehavior.HoldEnd
+        };
+        CountdownScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, animation);
+    }
+
     /// <summary>Slide the window in with a fade animation.</summary>
     public void AnimateIn()
     {
