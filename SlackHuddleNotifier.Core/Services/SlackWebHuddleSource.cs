@@ -218,8 +218,15 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
         if (subtype is not ("huddle_thread" or "sh_room_created"))
             return;
 
-        var user = root.Str("user");
         var channel = root.Str("channel");
+
+        // A real huddle_thread message is authored by USLACKBOT, so the top-level
+        // "user" is never the initiator - the actual starter is room.created_by.
+        // Reading "user" here mislabels every huddle as Slackbot and defeats the
+        // self-filter (own huddles would still pop). Fall back to the top-level
+        // user only for other/legacy shapes that carry no room object.
+        var user = root.Obj("room") is { } room ? room.Str("created_by") : null;
+        user ??= root.Str("user");
 
         // Logged before any self/dedupe filtering so a huddle you start yourself
         // still confirms the signal works, even though it won't raise a popup.
