@@ -14,9 +14,22 @@ public sealed class SlackWebClient : IDisposable
 {
     private const string DefaultBaseUrl = "https://slack.com";
 
+    // Slack's real-time gateway (and some API edges) reject non-browser User-Agents,
+    // so present the same shape the desktop client does. The WebSocket handshake in
+    // SlackWebHuddleSource reuses CookieHeader + UserAgent so the socket authenticates
+    // with the same identity as the HTTP calls.
+    public const string BrowserUserAgent =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Slack/4.38 Chrome/124 Electron/30 Safari/537.36";
+
     private readonly HttpClient _http;
     private readonly string _token;
     private readonly string _baseUrl;
+
+    /// <summary>The exact <c>Cookie</c> header sent on every request (e.g. <c>d=xoxd-…; d-s=…</c>).</summary>
+    public string CookieHeader { get; }
+
+    /// <summary>The <c>User-Agent</c> sent on every request.</summary>
+    public string UserAgent => BrowserUserAgent;
 
     public SlackWebClient(string clientToken, string cookie, string? workspaceUrl = null)
     {
@@ -26,11 +39,11 @@ public sealed class SlackWebClient : IDisposable
             : workspaceUrl!.TrimEnd('/');
 
         // Manage the cookie header ourselves; the "d" cookie must go out verbatim.
+        CookieHeader = NormalizeCookie(cookie);
         var handler = new HttpClientHandler { UseCookies = false };
         _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
-        _http.DefaultRequestHeaders.Add("Cookie", NormalizeCookie(cookie));
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SlackHuddleNotifier/1.0");
+        _http.DefaultRequestHeaders.Add("Cookie", CookieHeader);
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
     }
 
     /// <summary>POSTs to an API method with the client token and optional args.</summary>

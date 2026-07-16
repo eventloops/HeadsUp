@@ -6,6 +6,10 @@
 # dotenv files
 .env
 
+# Local config overrides holding secrets (Slack token/cookie) - never commit
+appsettings.Local.json
+**/appsettings.Local.json
+
 # User-specific files
 *.rsuser
 *.suo

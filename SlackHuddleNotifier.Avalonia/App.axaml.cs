@@ -52,6 +52,8 @@ public partial class App : Application
             {
                 cfg.SetBasePath(AppContext.BaseDirectory)
                    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                   // Git-ignored local override for secrets (Slack token/cookie). Wins over appsettings.json.
+                   .AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true)
                    .AddEnvironmentVariables("SHN_")
                    .AddCommandLine(desktop.Args ?? []);
             })

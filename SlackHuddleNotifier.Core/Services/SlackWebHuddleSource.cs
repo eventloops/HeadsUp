@@ -143,6 +143,13 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
             throw new InvalidOperationException("rtm.connect returned no WebSocket URL.");
 
         using var ws = new ClientWebSocket();
+        // The gateway authenticates the socket from the session cookie on the upgrade
+        // request, exactly like the HTTP calls. Without it the server accepts the
+        // handshake then immediately sends {"type":"error","error":{"msg":"invalid_auth"}}
+        // and closes. Mirror the same cookie + UA the client uses.
+        ws.Options.SetRequestHeader("Cookie", _client!.CookieHeader);
+        ws.Options.SetRequestHeader("User-Agent", _client.UserAgent);
+        ws.Options.SetRequestHeader("Origin", "https://app.slack.com");
         await ws.ConnectAsync(new Uri(url), stoppingToken);
         _logger.LogInformation("Connected to Slack real-time WebSocket. Watching for huddles.");
 

@@ -38,6 +38,10 @@
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- Git-ignored local secrets override; copied to output only when it exists. -->
+    <None Update="appsettings.Local.json" Condition="Exists('appsettings.Local.json')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <!-- Embedded as a WPF resource so the tray icon's pack URI (/Assets/tray.ico) resolves,
          and copied to output so the toast logo can reference it on disk. -->
     <Resource Include="Assets\tray.ico">
