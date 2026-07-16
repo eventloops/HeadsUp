@@ -3,14 +3,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Events;
-using SlackHuddleNotifier.Configuration;
 using SlackHuddleNotifier.Services;
 using SlackHuddleNotifier.ViewModels;
 using SlackHuddleNotifier.Views;
-using SlackNet.Events;
-using SlackNet.Extensions.DependencyInjection;
 using System.IO;
-using System.Windows;
 
 namespace SlackHuddleNotifier;
 
@@ -68,27 +64,11 @@ internal static class Program
             })
             .ConfigureServices((ctx, services) =>
             {
-                // Options
-                services.Configure<SlackOptions>(ctx.Configuration.GetSection(SlackOptions.SectionName));
-                services.Configure<NotificationOptions>(ctx.Configuration.GetSection(NotificationOptions.SectionName));
+                // Platform-neutral pipeline (options, SlackNet, monitor, coordinator).
+                services.AddSlackHuddleNotifierCore(ctx.Configuration);
 
-                // SlackNet - Socket Mode client. The huddle monitor doubles as the
-                // message event handler, so resolve the same singleton instance.
-                var slackOpts = ctx.Configuration.GetSection(SlackOptions.SectionName).Get<SlackOptions>() ?? new();
-                services.AddSlackNet(c =>
-                {
-                    c.UseApiToken(slackOpts.BotToken);
-                    c.UseAppLevelToken(slackOpts.AppToken);
-                    c.RegisterEventHandler<MessageEvent>(sp => sp.GetRequiredService<SlackHuddleMonitor>());
-                });
-
-                // Core services
-                services.AddSingleton<SlackHuddleMonitor>();
-                services.AddSingleton<IHuddleEventSource>(sp => sp.GetRequiredService<SlackHuddleMonitor>());
-                services.AddHostedService(sp => sp.GetRequiredService<SlackHuddleMonitor>());
-
+                // Windows presentation layer.
                 services.AddSingleton<INotificationService, WpfNotificationService>();
-                services.AddHostedService<HuddleNotificationCoordinator>();
 
                 // WPF ViewModels & Views (singletons so the DI container owns lifetime)
                 services.AddSingleton<TrayViewModel>();
