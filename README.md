@@ -85,7 +85,7 @@ auto-detected (Apple Silicon vs Intel).
 | Platforms | Windows + macOS/Linux | Windows + macOS/Linux | Windows only |
 | Detects | Every huddle in your conversations, reliably | Every huddle in your conversations | Only huddles Slack shows a toast for (muted channels/paused notifications = nothing) |
 | Details | Real names, avatar, working join link | Real names, avatar, working join link | Parsed from notification text; no avatar; join opens Slack |
-| Caveats | Official, stable | Unofficial API; can break when Slack changes, and technically against Slack's ToS | Stable, but misses muted/paused huddles |
+| Caveats | Official, stable | Unofficial API; can break when Slack changes | Stable, but misses muted/paused huddles |
 
 Set the mode in `appsettings.json`:
 
@@ -126,8 +126,7 @@ with no bot to invite anywhere. Huddles you start yourself are ignored.
 
 This mode borrows the session your browser (or the Slack desktop app) is
 already logged into — **no Slack app to create and no admin approval**. It's a
-prototype: the endpoints are undocumented and can change without warning, and
-automating Slack with a session token is against Slack's Terms of Service. Fine
+prototype: the endpoints are undocumented and can change without warning. Fine
 for a personal notifier while you wait for app approval; know what it is before
 you lean on it.
 
