@@ -61,8 +61,7 @@ public partial class App : Application
             {
                 services.AddHeadsUpCore(ctx.Configuration);
 
-                // Detection source: unofficial client API or the user's own Slack app.
-                // (WindowsNotifications is Windows-only and lives in the WPF head.)
+                // Detection source: the client-session prototype or the user's own Slack app.
                 var detection = ctx.Configuration.GetSection(DetectionOptions.SectionName)
                     .Get<DetectionOptions>() ?? new();
                 if (detection.UseSlackClientApi)

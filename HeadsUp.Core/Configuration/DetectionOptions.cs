@@ -6,16 +6,14 @@ public sealed class DetectionOptions
 
     public const string SlackApi = "SlackApi";
     public const string SlackClientApi = "SlackClientApi";
-    public const string WindowsNotifications = "WindowsNotifications";
 
     /// <summary>
-    /// How huddles are detected:
-    /// "SlackApi" (default) - connect to Slack with your own app's tokens; robust, cross-platform.
-    /// "SlackClientApi" - use a browser/desktop session (xoxc token + "d" cookie); no Slack app
-    ///   and no admin approval, but unofficial and undocumented (can change without notice).
-    ///   Cross-platform. Prototype.
-    /// "WindowsNotifications" - watch Slack's own Windows toasts; zero Slack setup,
-    ///   but only fires when Slack actually posts a notification. Windows head only.
+    /// How activity is detected:
+    /// "SlackClientApi" - the current prototype: a browser/desktop session (xoxc token + "d"
+    ///   cookie, obtained via an embedded Slack sign-in); no Slack app and no admin approval,
+    ///   but unofficial and undocumented. Cross-platform.
+    /// "SlackApi" (default) - the goal: a proper admin-approved Slack app using your own OAuth
+    ///   tokens. Robust and sanctioned; the target once app permission is granted.
     /// </summary>
     public string Mode { get; set; } = SlackApi;
 
@@ -28,7 +26,4 @@ public sealed class DetectionOptions
 
     public bool UseSlackClientApi =>
         string.Equals(Mode, SlackClientApi, StringComparison.OrdinalIgnoreCase);
-
-    public bool UseWindowsNotifications =>
-        string.Equals(Mode, WindowsNotifications, StringComparison.OrdinalIgnoreCase);
 }

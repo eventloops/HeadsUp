@@ -2,30 +2,63 @@
 
 Big, hard-to-miss desktop alerts for the Slack activity you can't afford to miss —
 starting with huddles. Bigger, louder, and harder to miss than Slack's own
-notifications. Runs quietly in the system tray (Windows) or menu bar (macOS).
+notifications. Runs quietly in the system tray (Windows) or menu bar (macOS/Linux).
 
-- Shows who started the huddle, in which channel or DM, with their avatar
-- One-click **Join huddle** button
-- Optional alert sound, and extra-prominent styling for configured priority users
-- Runs entirely per-user — **no admin rights needed** to install or run
+- A prominent popup showing **who** started the huddle, in **which** channel or DM,
+  with their avatar and a one-click **Join** button
+- A tray **dashboard**: live connection status plus a searchable **priority users**
+  editor — their alerts get extra-prominent, incoming-call styling
+- Optional alert sound; huddles you start yourself are ignored
+- Runs entirely per-user — **no admin rights** needed to install or run
 
 | Project | Purpose |
 |---|---|
-| `HeadsUp.Core` | Slack connection + huddle detection (cross-platform) |
-| `HeadsUp` | Windows app (WPF) |
+| `HeadsUp.Core` | Slack connection + detection (cross-platform) |
+| `HeadsUp` | Windows app (WPF) — the primary experience |
 | `HeadsUp.Avalonia` | macOS / Linux app (also runs on Windows) |
+
+> **What it detects today:** huddles. Mentions, DMs, and keyword alerts are on the
+> roadmap and will ride the same pipeline.
 
 ---
 
-## Prerequisites
+## How it connects to Slack
 
-1. **.NET 8 SDK** on the machine running the install script (the installed app
-   is self-contained, so the SDK is only needed to build):
-   - Windows: `winget install Microsoft.DotNet.SDK.8`
-   - macOS: `brew install dotnet-sdk` or the installer from dotnet.microsoft.com
-2. **Detection credentials**, which depend on the mode you pick (see *Three
-   detection modes* below): a Slack app for `SlackApi`, your browser session for
-   `SlackClientApi`, or nothing at all for `WindowsNotifications`.
+Heads-Up needs to see your Slack activity. There are two routes — and today only the
+first is live.
+
+### `SlackClientApi` — the current prototype
+
+Uses the same session your own Slack client uses (an `xoxc` client token plus the `d`
+session cookie). **No Slack app to create and no admin approval.** On Windows it obtains
+these through an **embedded Slack sign-in**: you click *Connect*, sign in once (SSO and
+all) in a small window, and it captures the session for you — nothing to copy or paste.
+It keeps that window warm in the background so the session stays alive.
+
+It's a prototype, honestly so: these endpoints are unofficial and undocumented, so they
+can change without notice, and a locked-down workspace can rotate the session out from
+under it (you'd just sign in again). Fine as a stopgap while the proper app is approved —
+know what it is before you lean on it.
+
+### `SlackApi` — the goal *(pending app approval)*
+
+The endgame is a **proper, admin-approved Slack app** using your own OAuth tokens:
+sanctioned, documented, and stable. Once your workspace admin approves it, this becomes
+the default and the client-session prototype retires.
+
+The plan when that lands: **one** registered app that each person **authorizes** once (a
+normal "Add to Slack" / *Allow* click), which issues *them* a personal user token scoped
+to exactly what they can already see — their channels, DMs, mentions. No session scraping,
+no impersonating the official client, and the token survives rotation. Per-person setup
+is just that one click; nothing is written up here yet because it's gated on the approval.
+
+Pick the route in `appsettings.json`:
+
+```json
+{ "Detection": { "Mode": "SlackClientApi" } }
+```
+
+---
 
 ## Install
 
@@ -39,31 +72,26 @@ cd HeadsUp
 .\install.ps1 -Uninstall   # remove everything
 ```
 
-Installs to `%LocalAppData%\Programs\HeadsUp` with a Start Menu
-shortcut. Your `appsettings.json` is preserved when you re-run the script.
+Installs to `%LocalAppData%\Programs\HeadsUp` with a Start Menu shortcut. Your
+`appsettings.json` is preserved when you re-run the script. Needs the **.NET 8 SDK**
+to build (`winget install Microsoft.DotNet.SDK.8`); the installed app is self-contained.
 
-#### "Running scripts is disabled on this system"
+<details>
+<summary>"Running scripts is disabled on this system"</summary>
 
-Corporate Windows images usually ship with PowerShell's execution policy set
-to `Restricted`. Two per-user fixes, no admin required:
+Corporate Windows images often set PowerShell's execution policy to `Restricted`.
+Two per-user fixes, no admin required:
 
 ```powershell
-# Option A - permanent for your account (recommended):
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-.\install.ps1
-
-# Option B - one-off, changes nothing on the machine:
-powershell -ExecutionPolicy Bypass -File .\install.ps1
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned   # permanent, recommended
+powershell -ExecutionPolicy Bypass -File .\install.ps1 # one-off, changes nothing
 ```
 
-`RemoteSigned` still blocks unsigned scripts downloaded from the internet;
-locally cloned files like this one run fine.
+If you instead see *"...set by your organization"*, it's enforced by Group Policy —
+talk to IT, or ask for a prebuilt `.exe` (not subject to execution policy).
+</details>
 
-> If you instead see *"...set by your organization"*, the policy is enforced
-> by Group Policy and neither option will work — talk to IT, or ask for a
-> prebuilt release binary (a plain `.exe` isn't subject to execution policy).
-
-### macOS (and Linux)
+### macOS / Linux
 
 ```bash
 git clone https://procode.ghe.com/Procode/HeadsUp
@@ -73,161 +101,115 @@ cd HeadsUp
 ./install.sh --uninstall   # remove everything
 ```
 
-Installs to `~/Applications/HeadsUp`. The build RID is
-auto-detected (Apple Silicon vs Intel).
+Installs to `~/Applications/HeadsUp`; the build RID is auto-detected (Apple Silicon vs
+Intel). Note the embedded sign-in is Windows-only for now — on macOS/Linux use the manual
+credential paste described below.
 
-## Three detection modes
+---
 
-| | `SlackApi` (default) | `SlackClientApi` | `WindowsNotifications` |
-|---|---|---|---|
-| Setup | Create a Slack app + tokens (below) | Paste your browser session token + cookie (below) | None |
-| Admin approval | Needed to install the app | **None** | None |
-| Platforms | Windows + macOS/Linux | Windows + macOS/Linux | Windows only |
-| Detects | Every huddle in your conversations, reliably | Every huddle in your conversations | Only huddles Slack shows a toast for (muted channels/paused notifications = nothing) |
-| Details | Real names, avatar, working join link | Real names, avatar, working join link | Parsed from notification text; no avatar; join opens Slack |
-| Caveats | Official, stable | Unofficial API; can break when Slack changes | Stable, but misses muted/paused huddles |
+## Signing in (client-session prototype)
 
-Set the mode in `appsettings.json`:
-
-```json
-{ "Detection": { "Mode": "SlackApi" } }
-```
-
-With `WindowsNotifications`, no Slack tokens are needed at all — the app
-watches the toasts Slack itself posts and re-raises them as big popups. On
-first run, allow notification access if prompted (Windows Settings → Privacy
-& security → Notifications → "Let apps access notifications").
-
-## Slack app setup (one-time, per person — `SlackApi` mode only)
-
-The app connects **as you** (a user token), so huddles are detected in exactly
-the channels, group DMs, and DMs you are a member of — including DM huddles —
-with no bot to invite anywhere. Huddles you start yourself are ignored.
-
-> **Each person creates their own Slack app.** Don't share one app between
-> teammates: Slack load-balances Socket Mode events across all connected
-> clients of an app, so two people on one app would each receive a random
-> half of the events — and a shared app authorized by several users would
-> deliver everyone's DM events to everyone.
-
-1. Create an app at <https://api.slack.com/apps> ("From scratch").
-2. **Socket Mode** → enable, and create an **app-level token** with the
-   `connections:write` scope → this is your `xapp-...` token.
-3. **OAuth & Permissions** → under **User Token Scopes** add:
-   `users:read`, `channels:read`, `groups:read`, `im:read`, `mpim:read`,
-   `channels:history`, `groups:history`, `im:history`, `mpim:history`.
-4. **Event Subscriptions** → enable, and under **Subscribe to events on
-   behalf of users** add:
-   `message.channels`, `message.groups`, `message.im`, `message.mpim`.
-5. **Install App** to the workspace → copy the **User OAuth Token**
-   (`xoxp-...`).
-
-## Slack client-session setup (`SlackClientApi` mode)
-
-This mode borrows the session your browser (or the Slack desktop app) is
-already logged into — **no Slack app to create and no admin approval**. It's a
-prototype: the endpoints are undocumented and can change without warning. Fine
-for a personal notifier while you wait for app approval; know what it is before
-you lean on it.
-
-You need two values from a Slack session **in your browser** (the desktop app
-holds the same two, but the browser is the easiest place to read them):
-
-1. **Client token (`xoxc-…`)** — open Slack in your browser, open DevTools
-   (F12) → **Console**, and run:
-
-   ```js
-   JSON.parse(localStorage.localConfig_v2).teams[
-     Object.keys(JSON.parse(localStorage.localConfig_v2).teams)[0]
-   ].token
-   ```
-
-   Copy the `xoxc-…` string it prints. (In more than one workspace? Pick the
-   right team key instead of the first one.)
-
-2. **`d` cookie (`xoxd-…`)** — it's HttpOnly, so the console can't read it. In
-   DevTools → **Application** → **Cookies** → your Slack domain, copy the
-   **Value** of the cookie named `d`.
-
-Put both in `appsettings.json` and set the mode:
+**Windows (embedded sign-in — recommended).** Set the mode and let the app handle the
+rest:
 
 ```json
 {
   "Detection": { "Mode": "SlackClientApi" },
   "SlackClient": {
-    "ClientToken": "xoxc-...",
-    "Cookie": "xoxd-...",
+    "CredentialSource": "WebView2",
     "WorkspaceUrl": "https://yourworkspace.slack.com"
   }
 }
 ```
 
-`WorkspaceUrl` is optional (defaults to `https://slack.com`); set it if calls
-come back with auth errors. Priority users are shared with `Slack:PriorityUsers`.
+On first launch you'll get a *Connecting to Slack…* window; if there's no live session it
+shows the Slack sign-in, you log in once, and it connects itself and opens the dashboard.
+`WorkspaceUrl` just points the sign-in at the right workspace.
 
-**Confirm it works before relying on it.** Tokens expire when your session
-rotates (SSO especially), so verify end-to-end. Start the app from a terminal
-and watch the log:
-
-```powershell
-Get-Content -Wait "$env:LocalAppData\HeadsUp\logs\log-*.txt" |
-  Select-String "session OK","WebSocket","Huddle","rtm","auth.test"
-```
-
-You want `Slack client session OK` followed by `Connected to Slack real-time
-WebSocket`. Then have someone start a huddle — or start one yourself: your own
-huddles log a `Huddle signal received` line (confirming the signal) but are
-deliberately suppressed from popups. If you see `auth.test failed` or
-`rtm.connect failed` instead, re-extract both values and try again.
-
-## Configure
-
-Edit `appsettings.json` in the install directory:
+**Manual paste (macOS/Linux, or if you prefer).** Set `"CredentialSource": "Config"` and
+provide the two values yourself:
 
 ```json
 {
-  "Slack": {
-    "AppToken": "xapp-...",
-    "UserToken": "xoxp-...",
-    "PriorityUsers": [ "U0123456789" ]
-  },
-  "Notification": {
-    "PlaySound": true,
-    "SoundFilePath": "",
-    "ToastDurationSeconds": 15
+  "Detection": { "Mode": "SlackClientApi" },
+  "SlackClient": {
+    "CredentialSource": "Config",
+    "ClientToken": "xoxc-...",
+    "Cookie": "d=xoxd-...; d-s=...",
+    "WorkspaceUrl": "https://yourworkspace.slack.com"
   }
 }
 ```
 
-- `PriorityUsers` — Slack user IDs whose huddles get the red header, green
-  join button, and incoming-call styling.
-- `SoundFilePath` — optional custom sound (`.wav` on Windows, `.aiff`/`.wav`
-  on macOS); leave empty for the system default.
+Read the two values from a signed-in Slack session in your browser:
+
+1. **Client token (`xoxc-…`)** — DevTools (F12) → **Console**:
+   ```js
+   JSON.parse(localStorage.localConfig_v2).teams[
+     Object.keys(JSON.parse(localStorage.localConfig_v2).teams)[0]
+   ].token
+   ```
+2. **`d` cookie (`xoxd-…`)** — DevTools → **Application** → **Cookies** → your Slack
+   domain → copy the value of the cookie named `d` (and `d-s` if present).
+
+Session tokens rotate (SSO especially), so if detection goes quiet you'll re-grab them —
+which is exactly why the Windows embedded sign-in exists.
+
+---
+
+## Configure
+
+Everything is in `appsettings.json` (in the install directory), and changes are picked up
+**live** — no restart needed.
+
+```json
+{
+  "Notification": {
+    "PlaySound": true,
+    "SoundFilePath": "",
+    "ToastDurationSeconds": 15
+  },
+  "Slack": {
+    "PriorityUsers": [ "U0123456789" ]
+  }
+}
+```
+
+- **Priority users** — easiest via the **dashboard** (tray → *Open dashboard* → search by
+  name → *Add*); it saves back here for you. Priority users get the red header, green join
+  button, and incoming-call styling. `Slack:PriorityUsers` also accepts raw user IDs.
+- **`SoundFilePath`** — optional custom sound (`.wav` on Windows; `.aiff`/`.wav` on
+  macOS); leave empty for the system default.
+
+Secrets (client token/cookie) live in a git-ignored `appsettings.Local.json` next to the
+app, so they never end up in source control.
+
+## The dashboard
+
+Right-click (or **double-click**) the tray icon → **Open dashboard**. It shows live status
+— connection, signed-in account, workspace, and detection mode — and the priority-users
+editor. It opens itself automatically the first time you connect.
 
 ## Running in the background
 
-The app is tray-only: no window opens at launch — look for the headset icon
-in the system tray (Windows) or menu bar (macOS). Popups appear only when a
-huddle starts; right-click the icon for status, test notification, and exit.
+Tray-only: no window opens at launch — look for the headset icon in the system tray
+(Windows) or menu bar (macOS). Popups appear only when a huddle starts; right-click the
+icon for the dashboard, About, and exit.
 
-Starting automatically is **opt-in**: install with `-Autostart` (Windows) or
-`--autostart` (macOS) and it will launch when you sign in. Already installed
-without it? Just re-run the install script with the flag — settings are
-preserved. It starts at *sign-in*, not machine boot, as befits a per-user app.
+Autostart is opt-in: install with `-Autostart` (Windows) or `--autostart` (macOS) to
+launch at sign-in. Already installed without it? Re-run the install script with the flag —
+settings are preserved.
 
 ## Try it without Slack
 
-Preview the popup without any tokens configured:
+Preview the popup with no tokens configured:
 
 ```
 HeadsUp.exe --test-popup              # standard
 HeadsUp.exe --test-popup --priority   # priority variant
 ```
 
-On macOS the tray menu also has a **Test notification** item.
-
 ## Logs
 
-`%LocalAppData%\HeadsUp\logs` (Windows) or
-`~/.local/share/HeadsUp/logs` (macOS/Linux) —
-rolling daily files, 7 kept.
+`%LocalAppData%\HeadsUp\logs` (Windows) or `~/.local/share/HeadsUp/logs`
+(macOS/Linux) — rolling daily files, 7 kept.

@@ -70,16 +70,11 @@ internal static class Program
                 // Platform-neutral pipeline (options, coordinator).
                 services.AddHeadsUpCore(ctx.Configuration);
 
-                // Detection source: Slack API (default) or Slack's own Windows toasts.
+                // Detection source: the client-session prototype (SlackClientApi) or the
+                // official Slack app (SlackApi).
                 var detection = ctx.Configuration.GetSection(DetectionOptions.SectionName)
                     .Get<DetectionOptions>() ?? new();
-                if (detection.UseWindowsNotifications)
-                {
-                    services.AddSingleton<WindowsNotificationHuddleSource>();
-                    services.AddSingleton<IHuddleEventSource>(sp => sp.GetRequiredService<WindowsNotificationHuddleSource>());
-                    services.AddHostedService(sp => sp.GetRequiredService<WindowsNotificationHuddleSource>());
-                }
-                else if (detection.UseSlackClientApi)
+                if (detection.UseSlackClientApi)
                 {
                     // WebView2 credentials survive rotation but are Windows-only, so they're
                     // registered here in the WPF head (before the core call, whose TryAdd then

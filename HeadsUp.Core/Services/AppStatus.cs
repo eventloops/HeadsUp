@@ -27,7 +27,7 @@ public sealed partial class AppStatus : ObservableObject
     [ObservableProperty]
     private string? _team;
 
-    /// <summary>Detection mode in effect (SlackApi / SlackClientApi / WindowsNotifications).</summary>
+    /// <summary>Detection mode in effect (SlackApi / SlackClientApi).</summary>
     [ObservableProperty]
     private string _mode = string.Empty;
 
