@@ -31,7 +31,10 @@ public class DashboardWindowSmokeTests
 
     private sealed class StubAlertStore : IAlertSettingsStore
     {
-        public AlertOptions Current { get; } = new();
+        public AlertOptions Current { get; } = new()
+        {
+            MutedChannels = { new MutedChannel { Id = "C9", Name = "random" } } // render a chip
+        };
         public Task SaveAsync(AlertOptions options, CancellationToken ct = default) => Task.CompletedTask;
     }
 
@@ -58,9 +61,12 @@ public class DashboardWindowSmokeTests
                     Kind: Models.AlertKind.Mention,
                     Preview: "can you take a look?"));
 
+                var snooze = new SnoozeService();
+                snooze.SnoozeFor(TimeSpan.FromMinutes(30)); // render the muted banner too
+
                 var vm = new DashboardViewModel(
                     new AppStatus { Mode = "SlackClientApi" },
-                    new StubDirectory(), new StubPriorityStore(), new StubAlertStore(), history);
+                    new StubDirectory(), new StubPriorityStore(), new StubAlertStore(), history, snooze);
 
                 // Constructing parses the XAML; Show applies every control template.
                 var window = new DashboardWindow(vm) { ShowActivated = false, Left = -32000, Top = -32000 };

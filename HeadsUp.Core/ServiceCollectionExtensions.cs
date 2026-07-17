@@ -35,6 +35,11 @@ public static class ServiceCollectionExtensions
         // In-memory log of surfaced alerts, shown in the dashboard's "Recent alerts".
         services.AddSingleton<IAlertHistory, AlertHistory>();
 
+        // Snooze / Slack-DND gate. Concrete registered too: the tray drives snooze and the
+        // DND poller feeds it, while the coordinator only reads it through IAlertGate.
+        services.AddSingleton<SnoozeService>();
+        services.AddSingleton<IAlertGate>(sp => sp.GetRequiredService<SnoozeService>());
+
         services.AddHostedService<HuddleNotificationCoordinator>();
 
         return services;

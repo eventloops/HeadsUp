@@ -22,4 +22,14 @@ public sealed class AlertOptions
 
     /// <summary>Words/phrases that trigger a keyword alert (matched case-insensitively).</summary>
     public List<string> KeywordList { get; set; } = [];
+
+    /// <summary>Channels to never alert on, whatever the kind. Managed from the dashboard.</summary>
+    public List<MutedChannel> MutedChannels { get; set; } = [];
+}
+
+/// <summary>A channel the user has silenced, kept with its name so the dashboard can list it.</summary>
+public sealed class MutedChannel
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
 }

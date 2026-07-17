@@ -37,11 +37,13 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
     // Internal and instance-scoped so integration tests can shrink the waits.
     internal TimeSpan _pingInterval = TimeSpan.FromSeconds(20);
     internal TimeSpan _reconnectDelay = TimeSpan.FromSeconds(10);
+    internal TimeSpan _dndPollInterval = TimeSpan.FromSeconds(60);
 
     private readonly ISlackCredentialProvider _credentials;
     private readonly IOptionsMonitor<SlackOptions> _slackOptions;
     private readonly IOptionsMonitor<DetectionOptions> _detectionOptions;
     private readonly IOptionsMonitor<AlertOptions> _alertOptions;
+    private readonly SnoozeService _snooze;
     private readonly AppStatus _status;
     private readonly ILogger<SlackWebHuddleSource> _logger;
 
@@ -61,6 +63,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
         IOptionsMonitor<SlackOptions> slackOptions,
         IOptionsMonitor<DetectionOptions> detectionOptions,
         IOptionsMonitor<AlertOptions> alertOptions,
+        SnoozeService snooze,
         AppStatus status,
         ILogger<SlackWebHuddleSource> logger)
     {
@@ -68,6 +71,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
         _slackOptions = slackOptions;
         _detectionOptions = detectionOptions;
         _alertOptions = alertOptions;
+        _snooze = snooze;
         _status = status;
         _logger = logger;
     }
@@ -176,8 +180,9 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
         _logger.LogInformation("Connected to Slack real-time WebSocket. Watching for huddles.");
         _status.SetConnection(true, "Watching for huddles");
 
-        using var pingCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-        var pingTask = KeepAliveAsync(ws, pingCts.Token);
+        using var sessionCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        var pingTask = KeepAliveAsync(ws, sessionCts.Token);
+        var dndTask = PollDndAsync(sessionCts.Token);
 
         try
         {
@@ -185,9 +190,63 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
         }
         finally
         {
-            pingCts.Cancel();
-            try { await pingTask; } catch { /* keep-alive teardown is best effort */ }
+            sessionCts.Cancel();
+            try { await Task.WhenAll(pingTask, dndTask); } catch { /* teardown is best effort */ }
+            _snooze.SetSlackDnd(null); // don't keep suppressing on stale DND once disconnected
         }
+    }
+
+    /// <summary>Polls <c>dnd.info</c> so Heads-Up honors the user's Slack Do Not Disturb.</summary>
+    private async Task PollDndAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(_dndPollInterval);
+            do
+            {
+                await UpdateDndOnceAsync(ct);
+            }
+            while (await timer.WaitForNextTickAsync(ct));
+        }
+        catch (OperationCanceledException) { /* normal on disconnect/shutdown */ }
+        catch (Exception ex) { _logger.LogDebug(ex, "DND poll loop ended."); }
+    }
+
+    private async Task UpdateDndOnceAsync(CancellationToken ct)
+    {
+        try
+        {
+            var dnd = await _client!.DndInfoAsync(ct);
+            if (dnd.Bool("ok"))
+                _snooze.SetSlackDnd(DndUntil(dnd));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "dnd.info poll failed.");
+        }
+    }
+
+    /// <summary>
+    /// The moment the user's Slack DND currently ends, or null if it isn't active now.
+    /// Manual Slack snooze (<c>snooze_endtime</c>) takes precedence over the scheduled DND
+    /// window (<c>next_dnd_start_ts</c>..<c>next_dnd_end_ts</c>).
+    /// </summary>
+    internal static DateTimeOffset? DndUntil(JsonElement dnd)
+    {
+        var now = DateTimeOffset.Now.ToUnixTimeSeconds();
+
+        if (dnd.Bool("snooze_enabled")
+            && dnd.TryGetProperty("snooze_endtime", out var se) && se.TryGetInt64(out var snoozeEnd)
+            && snoozeEnd > now)
+            return DateTimeOffset.FromUnixTimeSeconds(snoozeEnd);
+
+        if (dnd.Bool("dnd_enabled")
+            && dnd.TryGetProperty("next_dnd_start_ts", out var s) && s.TryGetInt64(out var start)
+            && dnd.TryGetProperty("next_dnd_end_ts", out var e) && e.TryGetInt64(out var end)
+            && start <= now && now < end)
+            return DateTimeOffset.FromUnixTimeSeconds(end);
+
+        return null;
     }
 
     private async Task ReceiveLoopAsync(ClientWebSocket ws, CancellationToken ct)
@@ -244,7 +303,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
 
         if (AlertClassifier.IsHuddleSubtype(subtype))
         {
-            if (alerts.Huddles)
+            if (alerts.Huddles && !AlertClassifier.IsChannelMuted(root.Str("channel") ?? string.Empty, alerts))
                 HandleHuddle(root, subtype);
             return;
         }

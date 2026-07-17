@@ -7,6 +7,7 @@
         FontFamily="Segoe UI" FontSize="13" TextOptions.TextFormattingMode="Ideal"
         Background="#FFF4F5F7">
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <Style x:Key="Card" TargetType="Border">
             <Setter Property="Background" Value="White"/>
             <Setter Property="BorderBrush" Value="#FFE6E8EC"/>
@@ -191,6 +192,17 @@
                     </Ellipse>
                     <TextBlock Text="{Binding Status.StatusMessage}" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
                 </StackPanel>
+
+                <!-- Muted banner (snooze / Slack DND) -->
+                <Border Background="#FFFBF4E6" BorderBrush="#FFF3D48A" BorderThickness="1" CornerRadius="8"
+                        Padding="10,7" Margin="0,0,0,12"
+                        Visibility="{Binding IsMuted, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#x1F515;" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding MuteStatus}" Foreground="#FF7A5B12" VerticalAlignment="Center"
+                                   FontWeight="SemiBold"/>
+                    </StackPanel>
+                </Border>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="105"/>
@@ -239,6 +251,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <Grid Grid.Row="0" Margin="2,0,0,8">
@@ -309,8 +322,16 @@
                                                     <Run Text="{Binding Headline, Mode=OneWay}"/><Run Text=" · "/><Run Text="{Binding Detail, Mode=OneWay}"/>
                                                 </TextBlock>
                                             </StackPanel>
-                                            <TextBlock Grid.Column="2" Text="{Binding TimeDisplay}" Style="{StaticResource Faint}"
-                                                       FontSize="12" VerticalAlignment="Top" Margin="10,1,2,0"/>
+                                            <StackPanel Grid.Column="2" HorizontalAlignment="Right">
+                                                <TextBlock Text="{Binding TimeDisplay}" Style="{StaticResource Faint}"
+                                                           FontSize="12" HorizontalAlignment="Right" Margin="10,1,2,0"/>
+                                                <Button Content="Mute channel" Style="{StaticResource RemoveButton}"
+                                                        FontSize="11" HorizontalAlignment="Right" Margin="0,2,0,0"
+                                                        Visibility="{Binding CanMute, Converter={StaticResource BoolToVis}}"
+                                                        Command="{Binding DataContext.MuteChannelCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip="Stop alerting from this channel"/>
+                                            </StackPanel>
                                         </Grid>
                                     </Button>
                                 </DataTemplate>
@@ -318,6 +339,46 @@
                         </ItemsControl>
                     </ScrollViewer>
                 </Grid>
+            </Border>
+
+            <!-- Muted channels -->
+            <Border Grid.Row="2" Background="#FFF7F3FB" BorderBrush="#FFE9DEF2" BorderThickness="1"
+                    CornerRadius="8" Padding="10,8" Margin="0,10,0,0">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Visibility" Value="Visible"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding MutedChannels.Count}" Value="0">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <StackPanel>
+                    <TextBlock Text="Muted channels — no alerts from these" Style="{StaticResource Faint}"
+                               FontSize="11" Margin="0,0,0,6"/>
+                    <ItemsControl ItemsSource="{Binding MutedChannels}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="White" BorderBrush="#FFD9C7E8" BorderThickness="1"
+                                        CornerRadius="12" Padding="8,3" Margin="0,0,6,6">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Name, StringFormat='#{0}'}" VerticalAlignment="Center" FontSize="12"/>
+                                        <Button Content="✕" FontSize="11" Margin="6,0,0,0" Padding="2,0"
+                                                Foreground="#FF98A2B3" Background="Transparent" BorderThickness="0"
+                                                Cursor="Hand" VerticalAlignment="Center"
+                                                Command="{Binding DataContext.UnmuteCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="Unmute"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
             </Border>
         </Grid>
         </TabItem>

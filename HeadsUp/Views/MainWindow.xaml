@@ -8,6 +8,10 @@
         ShowInTaskbar="False"
         Visibility="Hidden">
 
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </Window.Resources>
+
     <Grid>
         <tb:TaskbarIcon x:Name="TrayIcon"
                         ToolTipText="Heads-Up"
@@ -16,6 +20,16 @@
             <tb:TaskbarIcon.ContextMenu>
                 <ContextMenu>
                     <MenuItem Header="{Binding Status.StatusMessage}" IsEnabled="False" FontWeight="SemiBold"/>
+                    <MenuItem Header="{Binding MuteStatus}" IsEnabled="False"
+                              Visibility="{Binding IsMuted, Converter={StaticResource BoolToVis}}"/>
+                    <Separator/>
+                    <MenuItem Header="Snooze alerts">
+                        <MenuItem Header="For 30 minutes" Command="{Binding Snooze30Command}"/>
+                        <MenuItem Header="For 1 hour" Command="{Binding Snooze1HourCommand}"/>
+                        <MenuItem Header="Until tomorrow" Command="{Binding SnoozeUntilTomorrowCommand}"/>
+                    </MenuItem>
+                    <MenuItem Header="Resume alerts" Command="{Binding ResumeCommand}"
+                              Visibility="{Binding IsManuallySnoozed, Converter={StaticResource BoolToVis}}"/>
                     <Separator/>
                     <MenuItem Header="Open dashboard…" Command="{Binding OpenDashboardCommand}"/>
                     <MenuItem Header="About…" Command="{Binding ShowAboutCommand}"/>

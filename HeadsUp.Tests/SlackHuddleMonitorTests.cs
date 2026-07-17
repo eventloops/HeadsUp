@@ -167,6 +167,18 @@ public class SlackHuddleMonitorTests
     }
 
     [Fact]
+    public async Task A_muted_channel_suppresses_its_huddles()
+    {
+        _alertOptions.MutedChannels.Add(new MutedChannel { Id = "C1", Name = "general" });
+        var monitor = await StartedMonitor();
+        var waiter = new AlertWaiter(monitor);
+
+        await monitor.Handle(Huddle("U2", "C1"));
+
+        Assert.False(await waiter.RaisedWithin(TimeSpan.FromMilliseconds(200)));
+    }
+
+    [Fact]
     public async Task Own_huddles_are_suppressed_by_default()
     {
         var monitor = await StartedMonitor();

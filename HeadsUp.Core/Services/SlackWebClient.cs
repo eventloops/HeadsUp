@@ -76,6 +76,10 @@ public sealed class SlackWebClient : IDisposable
     public Task<JsonElement> UserInfoAsync(string userId, CancellationToken ct = default) =>
         CallAsync("users.info", new[] { new KeyValuePair<string, string>("user", userId) }, ct);
 
+    /// <summary>Reads the signed-in user's Do Not Disturb state (schedule + manual snooze).</summary>
+    public Task<JsonElement> DndInfoAsync(CancellationToken ct = default) =>
+        CallAsync("dnd.info", null, ct);
+
     public Task<JsonElement> ConversationInfoAsync(string channelId, CancellationToken ct = default) =>
         CallAsync("conversations.info", new[] { new KeyValuePair<string, string>("channel", channelId) }, ct);
 

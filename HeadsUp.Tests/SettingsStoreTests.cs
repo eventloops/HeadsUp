@@ -134,6 +134,27 @@ public class SettingsStoreTests
     }
 
     [Fact]
+    public async Task Alert_store_writes_muted_channels_and_dedupes_by_id()
+    {
+        var store = new JsonAlertSettingsStore(new StaticMonitor<AlertOptions>(new()));
+
+        await store.SaveAsync(new AlertOptions
+        {
+            MutedChannels =
+            {
+                new MutedChannel { Id = "C1", Name = "general" },
+                new MutedChannel { Id = "c1", Name = "general-dupe" }, // same id, dropped
+                new MutedChannel { Id = "", Name = "blank" },          // no id, dropped
+                new MutedChannel { Id = "C2", Name = "random" },
+            }
+        });
+
+        var muted = ReadLocalSettings()["Alerts"]!["MutedChannels"]!.AsArray();
+        Assert.Equal(new[] { "C1", "C2" }, muted.Select(m => m!["Id"]!.GetValue<string>()));
+        Assert.Equal("general", muted[0]!["Name"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task Alert_store_preserves_every_other_setting()
     {
         await File.WriteAllTextAsync(LocalSettingsPath, """

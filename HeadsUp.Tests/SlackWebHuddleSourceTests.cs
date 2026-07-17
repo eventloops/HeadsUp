@@ -32,6 +32,7 @@ public class SlackWebHuddleSourceFrameTests
             new StaticMonitor<SlackOptions>(new() { PriorityUsers = ["UPRIO"] }),
             new StaticMonitor<DetectionOptions>(_detection),
             new StaticMonitor<AlertOptions>(_alerts),
+            new SnoozeService(),
             new AppStatus(),
             NullLogger<SlackWebHuddleSource>.Instance);
 
@@ -101,6 +102,20 @@ public class SlackWebHuddleSourceFrameTests
     public async Task Huddles_toggle_off_suppresses()
     {
         _alerts.Huddles = false;
+        var source = CreateSource();
+        var waiter = new AlertWaiter(source);
+
+        source.HandleFrame("""
+            { "type": "message", "subtype": "huddle_thread", "channel": "C1", "room": { "created_by": "U2" } }
+            """);
+
+        Assert.False(await waiter.RaisedWithin(TimeSpan.FromMilliseconds(200)));
+    }
+
+    [Fact]
+    public async Task A_muted_channel_suppresses_its_huddles()
+    {
+        _alerts.MutedChannels.Add(new HeadsUp.Configuration.MutedChannel { Id = "C1", Name = "general" });
         var source = CreateSource();
         var waiter = new AlertWaiter(source);
 
@@ -296,7 +311,8 @@ public class SlackWebHuddleSourceFrameTests
 public class SlackWebHuddleSourceIntegrationTests
 {
     private static SlackWebHuddleSource CreateSource(
-        FakeSlackServer server, out AppStatus status, out StaticCredentialProvider creds)
+        FakeSlackServer server, out AppStatus status, out StaticCredentialProvider creds,
+        SnoozeService? snooze = null)
     {
         creds = new StaticCredentialProvider(
             new SlackCredentials("xoxc-test", "d=xoxd-test", server.BaseUrl));
@@ -306,6 +322,7 @@ public class SlackWebHuddleSourceIntegrationTests
             new StaticMonitor<SlackOptions>(new()),
             new StaticMonitor<DetectionOptions>(new()),
             new StaticMonitor<AlertOptions>(new()),
+            snooze ?? new SnoozeService(),
             status,
             NullLogger<SlackWebHuddleSource>.Instance);
     }
@@ -429,6 +446,35 @@ public class SlackWebHuddleSourceIntegrationTests
     }
 
     [Fact]
+    public async Task Slack_dnd_is_polled_and_feeds_the_snooze_gate()
+    {
+        using var server = new FakeSlackServer { DndUntil = DateTimeOffset.Now.AddMinutes(30) };
+        var snooze = new SnoozeService();
+        var source = CreateSource(server, out var status, out _, snooze);
+        source._dndPollInterval = TimeSpan.FromMilliseconds(50);
+
+        await source.StartAsync(CancellationToken.None);
+        try
+        {
+            await WaitForStatusAsync(status, () => status.IsConnected);
+
+            // The poller picks up Slack DND and mutes the gate.
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            while (!snooze.SlackDndActive && DateTime.UtcNow < deadline)
+                await Task.Delay(25);
+            Assert.True(snooze.IsMuted(out var reason));
+            Assert.Equal("Do Not Disturb is on in Slack", reason);
+        }
+        finally
+        {
+            await source.StopAsync(CancellationToken.None);
+        }
+
+        // Disconnecting clears the DND-based mute so it can't get stuck on.
+        Assert.False(snooze.SlackDndActive);
+    }
+
+    [Fact]
     public async Task A_gracefully_closed_socket_reconnects()
     {
         using var server = new FakeSlackServer();
@@ -460,6 +506,7 @@ public class SlackWebHuddleSourceIntegrationTests
             new StaticMonitor<SlackOptions>(new()),
             new StaticMonitor<DetectionOptions>(new()),
             new StaticMonitor<AlertOptions>(new()),
+            new SnoozeService(),
             status,
             NullLogger<SlackWebHuddleSource>.Instance);
 

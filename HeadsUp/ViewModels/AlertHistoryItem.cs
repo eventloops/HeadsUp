@@ -20,6 +20,8 @@ public sealed class AlertHistoryItem
         // Message preview for mentions/DMs/keywords; huddles just show where.
         Detail = string.IsNullOrWhiteSpace(alert.Preview) ? Where : $"{Where} · {alert.Preview}";
         IsPriorityUser = alert.IsPriorityUser;
+        // Muting is per-channel, so only offer it for real channels (not DMs).
+        CanMute = !alert.IsDirectMessage;
     }
 
     public Alert Alert { get; }
@@ -32,6 +34,9 @@ public sealed class AlertHistoryItem
     public string Detail { get; }
     public string TimeDisplay { get; }
     public bool IsPriorityUser { get; }
+    public bool CanMute { get; }
+    public string ChannelId => Alert.ChannelId;
+    public string ChannelName => Alert.ChannelName;
 
     /// <summary>Relative time for recent items ("2m ago"), a clock time for older ones.</summary>
     private static string FormatTime(DateTimeOffset when)

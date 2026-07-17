@@ -101,7 +101,7 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
         // legacy Slack Calls use "sh_room_created".
         if (AlertClassifier.IsHuddleSubtype(slackEvent.Subtype))
         {
-            if (!alerts.Huddles)
+            if (!alerts.Huddles || AlertClassifier.IsChannelMuted(slackEvent.Channel ?? string.Empty, alerts))
                 return;
 
             _logger.LogDebug("Huddle-related message detected. Channel={Channel} Subtype={Subtype}",

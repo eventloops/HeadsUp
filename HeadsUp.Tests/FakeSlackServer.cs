@@ -26,6 +26,9 @@ public sealed class FakeSlackServer : IDisposable // public: used in a [Theory] 
     private readonly TaskCompletionSource<string> _firstClientFrame =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+    /// <summary>When set, dnd.info reports the user snoozed in Slack until this time.</summary>
+    public DateTimeOffset? DndUntil { get; set; }
+
     public Behavior Mode { get; set; } = Behavior.Normal;
     public int Port { get; }
     public string BaseUrl => $"http://127.0.0.1:{Port}";
@@ -182,6 +185,10 @@ public sealed class FakeSlackServer : IDisposable // public: used in a [Theory] 
         "/api/users.list" => Mode == Behavior.UsersListFail
             ? """{ "ok": false, "error": "ratelimited" }"""
             : UsersListPage(body),
+
+        "/api/dnd.info" => DndUntil is { } until
+            ? $$"""{ "ok": true, "snooze_enabled": true, "snooze_endtime": {{until.ToUnixTimeSeconds()}} }"""
+            : """{ "ok": true, "dnd_enabled": false, "snooze_enabled": false }""",
 
         _ => """{ "ok": false, "error": "unknown_method" }""",
     };

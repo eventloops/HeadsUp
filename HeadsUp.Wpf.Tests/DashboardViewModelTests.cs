@@ -63,6 +63,7 @@ public class DashboardViewModelTests
     private readonly FakePriorityStore _priorityStore = new();
     private readonly FakeAlertStore _alertStore = new();
     private readonly AlertHistory _history = new();
+    private readonly SnoozeService _snooze = new();
     private readonly AppStatus _status = new();
 
     private static DirectoryUser User(string id, string name, string? real = null) =>
@@ -81,7 +82,7 @@ public class DashboardViewModelTests
         Kind: kind);
 
     private DashboardViewModel CreateVm() =>
-        new(_status, _directory, _priorityStore, _alertStore, _history);
+        new(_status, _directory, _priorityStore, _alertStore, _history, _snooze);
 
     // ------------------------------------------------------------------
     // Alert settings round trip
@@ -370,5 +371,88 @@ public class DashboardViewModelTests
         _history.Record(Alert());
 
         Assert.Empty(vm.RecentAlerts);
+    }
+
+    // ------------------------------------------------------------------
+    // Snooze status
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void Snooze_state_is_reflected_and_updates_live()
+    {
+        var vm = CreateVm();
+        Assert.False(vm.IsMuted);
+
+        _snooze.SnoozeFor(TimeSpan.FromHours(1));
+
+        Assert.True(vm.IsMuted);
+        Assert.StartsWith("Snoozed until", vm.MuteStatus);
+    }
+
+    // ------------------------------------------------------------------
+    // Muted channels
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void Loads_existing_muted_channels()
+    {
+        _alertStore.Current = new AlertOptions
+        {
+            MutedChannels = { new MutedChannel { Id = "C1", Name = "general" } }
+        };
+
+        var vm = CreateVm();
+
+        Assert.Equal(new[] { "general" }, vm.MutedChannels.Select(m => m.Name));
+    }
+
+    [Fact]
+    public async Task Muting_from_a_history_row_adds_and_persists()
+    {
+        _history.Record(Alert(channel: "general"));
+        var vm = CreateVm();
+
+        await vm.MuteChannelCommand.ExecuteAsync(vm.RecentAlerts[0]);
+
+        Assert.Equal(new[] { "C1" }, vm.MutedChannels.Select(m => m.Id));
+        Assert.Equal(new[] { "C1" }, _alertStore.LastSaved!.MutedChannels.Select(m => m.Id));
+    }
+
+    [Fact]
+    public async Task Muting_the_same_channel_twice_is_ignored()
+    {
+        _history.Record(Alert(channel: "general"));
+        var vm = CreateVm();
+
+        await vm.MuteChannelCommand.ExecuteAsync(vm.RecentAlerts[0]);
+        await vm.MuteChannelCommand.ExecuteAsync(vm.RecentAlerts[0]);
+
+        Assert.Single(vm.MutedChannels);
+    }
+
+    [Fact]
+    public async Task Dm_rows_cannot_be_muted()
+    {
+        _history.Record(Alert(dm: true, kind: AlertKind.DirectMessage));
+        var vm = CreateVm();
+
+        await vm.MuteChannelCommand.ExecuteAsync(vm.RecentAlerts[0]);
+
+        Assert.Empty(vm.MutedChannels);
+    }
+
+    [Fact]
+    public async Task Unmuting_removes_and_persists()
+    {
+        _alertStore.Current = new AlertOptions
+        {
+            MutedChannels = { new MutedChannel { Id = "C1", Name = "general" } }
+        };
+        var vm = CreateVm();
+
+        await vm.UnmuteCommand.ExecuteAsync(vm.MutedChannels[0]);
+
+        Assert.Empty(vm.MutedChannels);
+        Assert.Empty(_alertStore.LastSaved!.MutedChannels);
     }
 }

@@ -51,6 +51,13 @@ public sealed class JsonAlertSettingsStore : IAlertSettingsStore
                      .Distinct(StringComparer.OrdinalIgnoreCase))
             keywords.Add(k);
 
+        var muted = new JsonArray();
+        foreach (var channel in options.MutedChannels
+                     .Where(c => !string.IsNullOrWhiteSpace(c.Id))
+                     .GroupBy(c => c.Id, StringComparer.OrdinalIgnoreCase)
+                     .Select(g => g.First()))
+            muted.Add(new JsonObject { ["Id"] = channel.Id, ["Name"] = channel.Name });
+
         root["Alerts"] = new JsonObject
         {
             ["Huddles"] = options.Huddles,
@@ -58,6 +65,7 @@ public sealed class JsonAlertSettingsStore : IAlertSettingsStore
             ["DirectMessages"] = options.DirectMessages,
             ["Keywords"] = options.Keywords,
             ["KeywordList"] = keywords,
+            ["MutedChannels"] = muted,
         };
 
         await File.WriteAllTextAsync(path, root.ToJsonString(WriteOptions), ct);

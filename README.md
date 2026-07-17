@@ -12,6 +12,10 @@ or menu bar (macOS/Linux).
   what you missed while away — click any row to open it in Slack), a **"Notify me
   about"** panel to toggle each alert kind, and a searchable **priority users**
   editor — their alerts get extra-prominent, incoming-call styling
+- **Snooze** from the tray (30 min / 1 hour / until tomorrow), and it automatically
+  goes quiet while your **Slack Do Not Disturb** is on — snoozed alerts still land
+  in history, just without the popup or sound
+- **Mute noisy channels** — one click on a recent alert stops that channel alerting
 - Optional alert sound; your own huddles and messages never alert
 - Runs entirely per-user — **no admin rights** needed to install or run
 
@@ -183,7 +187,8 @@ Everything is in `appsettings.json` (in the install directory), and changes are 
     "Mentions": true,
     "DirectMessages": false,
     "Keywords": false,
-    "KeywordList": [ "deploy", "prod down" ]
+    "KeywordList": [ "deploy", "prod down" ],
+    "MutedChannels": [ { "Id": "C0123456789", "Name": "random" } ]
   },
   "Notification": {
     "PlaySound": true,
@@ -203,6 +208,8 @@ Everything is in `appsettings.json` (in the install directory), and changes are 
 - **`KeywordList`** — words or phrases (matched case-insensitively, anywhere in the
   message) that trigger a keyword alert when `Keywords` is on. Editable as a
   comma-separated list in the dashboard.
+- **`MutedChannels`** — channels that never alert, whatever the kind. Easiest via the
+  dashboard's *Mute channel* button on a recent alert; stored here as `{ Id, Name }`.
 - **Priority users** — easiest via the **dashboard** (tray → *Open dashboard* → search by
   name → *Add*); it saves back here for you. Priority users get the red header, green join
   button, and incoming-call styling. `Slack:PriorityUsers` also accepts raw user IDs.
@@ -224,9 +231,18 @@ Under it, two tabs:
 
 - **Recent alerts** — a running list of what you've been alerted to this session, newest
   first, so a popup you missed while away isn't lost. Click any row to open it in Slack;
-  *Clear* empties the list. (In-memory — it resets when the app restarts.)
+  *Mute channel* stops that channel alerting; *Clear* empties the list. (In-memory — it
+  resets when the app restarts.) Muted channels are listed below with a one-click unmute.
 - **Priority users** — search your workspace and add people whose alerts should get the
   louder, incoming-call treatment.
+
+## Snooze & Do Not Disturb
+
+Right-click the tray icon → **Snooze alerts** for 30 minutes, 1 hour, or until tomorrow
+morning; **Resume alerts** ends it early. While snoozed — or whenever your **Slack Do Not
+Disturb** is active (Heads-Up checks periodically) — no popups or sounds fire, but alerts
+are still recorded in the dashboard's *Recent alerts* so you can catch up. The tray menu
+and dashboard both show when you're muted and why.
 
 ## Running in the background
 
@@ -260,7 +276,7 @@ dotnet test
 ```
 
 `HeadsUp.Tests` covers the core pipeline (~99% line coverage), including an in-process
-fake Slack server that drives the real WebSocket path end-to-end — auth, connect,
-pushed frames, reconnects. `HeadsUp.Wpf.Tests` covers the dashboard and tray
-view models. UI windows and the WebView2 sign-in flow are exercised manually
-(`--test-popup` helps).
+fake Slack server that drives the real WebSocket path end-to-end — auth, connect, pushed
+frames, DND polling, reconnects. `HeadsUp.Wpf.Tests` covers the dashboard and tray view
+models plus a smoke test that renders the real dashboard window so broken XAML fails the
+build. The WebView2 sign-in flow is exercised manually (`--test-popup` helps).

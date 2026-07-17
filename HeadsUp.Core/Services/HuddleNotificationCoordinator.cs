@@ -13,17 +13,20 @@ public sealed class HuddleNotificationCoordinator : BackgroundService
     private readonly IAlertSource _eventSource;
     private readonly INotificationService _notificationService;
     private readonly IAlertHistory _history;
+    private readonly IAlertGate _gate;
     private readonly ILogger<HuddleNotificationCoordinator> _logger;
 
     public HuddleNotificationCoordinator(
         IAlertSource eventSource,
         INotificationService notificationService,
         IAlertHistory history,
+        IAlertGate gate,
         ILogger<HuddleNotificationCoordinator> logger)
     {
         _eventSource = eventSource;
         _notificationService = notificationService;
         _history = history;
+        _gate = gate;
         _logger = logger;
     }
 
@@ -45,6 +48,13 @@ public sealed class HuddleNotificationCoordinator : BackgroundService
     {
         // Log it to history first so the dashboard reflects it even if the popup is missed.
         _history.Record(e);
+
+        // Snooze / Slack DND silences the popup + sound, but the alert is still in history.
+        if (_gate.IsMuted(out var reason))
+        {
+            _logger.LogDebug("Alert suppressed ({Reason}); recorded to history only.", reason);
+            return;
+        }
 
         // Fire-and-forget with logging; do not block the Slack event thread.
         _ = _notificationService.ShowAlertAsync(e)

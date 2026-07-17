@@ -21,10 +21,13 @@ public static class AlertClassifier
     /// <summary>
     /// Classifies a plain user message (no subtype) against the enabled alert kinds,
     /// or <c>null</c> when it shouldn't alert. Priority: a direct @mention beats
-    /// "it's a DM" beats a keyword match.
+    /// "it's a DM" beats a keyword match. A muted channel never alerts.
     /// </summary>
     public static AlertKind? ClassifyMessage(string text, string channelId, string? selfUserId, AlertOptions alerts)
     {
+        if (IsChannelMuted(channelId, alerts))
+            return null;
+
         var isMention = selfUserId is not null &&
                         text.Contains($"<@{selfUserId}>", StringComparison.OrdinalIgnoreCase);
         var isDm = channelId.StartsWith('D');
@@ -33,6 +36,15 @@ public static class AlertClassifier
         if (alerts.DirectMessages && isDm) return AlertKind.DirectMessage;
         if (alerts.Keywords && MatchesKeyword(text, alerts.KeywordList)) return AlertKind.Keyword;
         return null;
+    }
+
+    /// <summary>True when the channel is on the muted list (case-insensitive on id).</summary>
+    public static bool IsChannelMuted(string channelId, AlertOptions alerts)
+    {
+        foreach (var muted in alerts.MutedChannels)
+            if (string.Equals(muted.Id, channelId, StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
     }
 
     /// <summary>Case-insensitive substring match against the configured keyword list.</summary>

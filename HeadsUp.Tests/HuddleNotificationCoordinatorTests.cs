@@ -21,9 +21,10 @@ public class HuddleNotificationCoordinatorTests
     private readonly FakeAlertSource _source = new();
     private readonly RecordingNotificationService _notifications = new();
     private readonly AlertHistory _history = new();
+    private readonly SnoozeService _gate = new();
 
     private HuddleNotificationCoordinator CreateCoordinator() => new(
-        _source, _notifications, _history, NullLogger<HuddleNotificationCoordinator>.Instance);
+        _source, _notifications, _history, _gate, NullLogger<HuddleNotificationCoordinator>.Instance);
 
     [Fact]
     public async Task Alerts_flow_from_source_to_notification_service_and_history()
@@ -83,5 +84,32 @@ public class HuddleNotificationCoordinatorTests
 
         Assert.Empty(_notifications.Shown);
         Assert.Empty(_history.Recent);
+    }
+
+    [Fact]
+    public async Task While_snoozed_the_popup_is_suppressed_but_history_still_records()
+    {
+        _gate.SnoozeFor(TimeSpan.FromHours(1));
+        var coordinator = CreateCoordinator();
+
+        await coordinator.StartAsync(CancellationToken.None);
+        try
+        {
+            var alert = SomeAlert();
+            _source.Raise(alert);
+            await Task.Delay(150); // let the fire-and-forget path settle
+
+            Assert.Empty(_notifications.Shown);                 // popup suppressed
+            Assert.Same(alert, Assert.Single(_history.Recent)); // but still recorded
+
+            // Resuming lets the next alert through.
+            _gate.Resume();
+            _source.Raise(alert);
+            Assert.Same(alert, await _notifications.FirstAlert);
+        }
+        finally
+        {
+            await coordinator.StopAsync(CancellationToken.None);
+        }
     }
 }

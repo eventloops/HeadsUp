@@ -19,6 +19,32 @@ public class AlertClassifierTests
     };
 
     // ------------------------------------------------------------------
+    // Muted channels
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void IsChannelMuted_matches_case_insensitively()
+    {
+        var alerts = AllOn();
+        alerts.MutedChannels.Add(new MutedChannel { Id = "C1", Name = "general" });
+
+        Assert.True(AlertClassifier.IsChannelMuted("c1", alerts));
+        Assert.False(AlertClassifier.IsChannelMuted("C2", alerts));
+    }
+
+    [Fact]
+    public void A_muted_channel_never_classifies_a_message()
+    {
+        var alerts = AllOn("deploy");
+        alerts.MutedChannels.Add(new MutedChannel { Id = "C1", Name = "general" });
+
+        // Would be a keyword hit, but the channel is muted.
+        Assert.Null(AlertClassifier.ClassifyMessage("deploy now", "C1", SelfId, alerts));
+        // A different channel still alerts.
+        Assert.Equal(AlertKind.Keyword, AlertClassifier.ClassifyMessage("deploy now", "C2", SelfId, alerts));
+    }
+
+    // ------------------------------------------------------------------
     // IsHuddleSubtype
     // ------------------------------------------------------------------
 

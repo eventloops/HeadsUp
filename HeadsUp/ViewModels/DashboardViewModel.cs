@@ -17,6 +17,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
     private readonly IPrioritySettingsStore _priorityStore;
     private readonly IAlertSettingsStore _alertStore;
     private readonly IAlertHistory _history;
+    private readonly SnoozeService _snooze;
     // Captured at construction (the UI thread in the app; null under test) so history
     // changes raised on a background thread marshal back before touching the collection.
     private readonly SynchronizationContext? _sync = SynchronizationContext.Current;
@@ -28,6 +29,14 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
 
     /// <summary>Live app status - bound directly by the view.</summary>
     public AppStatus Status { get; }
+
+    /// <summary>True while alerts are silenced (manual snooze or Slack DND).</summary>
+    [ObservableProperty]
+    private bool _isMuted;
+
+    /// <summary>Why alerts are silenced; empty when not muted.</summary>
+    [ObservableProperty]
+    private string _muteStatus = string.Empty;
 
     /// <summary>Recent surfaced alerts, newest first.</summary>
     public ObservableCollection<AlertHistoryItem> RecentAlerts { get; } = new();
@@ -68,17 +77,35 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
         IUserDirectory directory,
         IPrioritySettingsStore priorityStore,
         IAlertSettingsStore alertStore,
-        IAlertHistory history)
+        IAlertHistory history,
+        SnoozeService snooze)
     {
         Status = status;
         _directory = directory;
         _priorityStore = priorityStore;
         _alertStore = alertStore;
         _history = history;
+        _snooze = snooze;
         LoadAlerts();
 
         RefreshHistory();
         _history.Changed += OnHistoryChanged;
+
+        RefreshMute();
+        _snooze.Changed += OnSnoozeChanged;
+    }
+
+    private void OnSnoozeChanged(object? sender, EventArgs e)
+    {
+        // Scalar property notifications are marshalled by WPF, so this is safe off-thread.
+        IsMuted = _snooze.IsMuted(out var reason);
+        MuteStatus = reason;
+    }
+
+    private void RefreshMute()
+    {
+        IsMuted = _snooze.IsMuted(out var reason);
+        MuteStatus = reason;
     }
 
     // ------------------------------------------------------------------
@@ -113,7 +140,43 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ClearHistory() => _history.Clear();
 
-    public void Dispose() => _history.Changed -= OnHistoryChanged;
+    // ------------------------------------------------------------------
+    // Muted channels
+    // ------------------------------------------------------------------
+
+    /// <summary>Channels the user has silenced (no alerts of any kind).</summary>
+    public ObservableCollection<MutedChannel> MutedChannels { get; } = new();
+
+    [RelayCommand]
+    private async Task MuteChannel(AlertHistoryItem? item)
+    {
+        if (item is null || !item.CanMute ||
+            MutedChannels.Any(m => string.Equals(m.Id, item.ChannelId, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        MutedChannels.Add(new MutedChannel { Id = item.ChannelId, Name = item.ChannelName });
+        await SaveAlertsAsync();
+    }
+
+    [RelayCommand]
+    private async Task Unmute(MutedChannel? channel)
+    {
+        if (channel is null)
+            return;
+
+        var existing = MutedChannels.FirstOrDefault(m =>
+            string.Equals(m.Id, channel.Id, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+            MutedChannels.Remove(existing);
+
+        await SaveAlertsAsync();
+    }
+
+    public void Dispose()
+    {
+        _history.Changed -= OnHistoryChanged;
+        _snooze.Changed -= OnSnoozeChanged;
+    }
 
     private void LoadAlerts()
     {
@@ -124,6 +187,9 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
         NotifyDirectMessages = a.DirectMessages;
         NotifyKeywords = a.Keywords;
         KeywordsText = string.Join(", ", a.KeywordList);
+        MutedChannels.Clear();
+        foreach (var channel in a.MutedChannels)
+            MutedChannels.Add(new MutedChannel { Id = channel.Id, Name = channel.Name });
         _loadingAlerts = false;
     }
 
@@ -146,7 +212,8 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
             Keywords = NotifyKeywords,
             KeywordList = KeywordsText
                 .Split(new[] { ',', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .ToList()
+                .ToList(),
+            MutedChannels = MutedChannels.ToList()
         };
 
         try
