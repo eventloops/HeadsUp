@@ -1,6 +1,8 @@
 using System.IO;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -14,8 +16,8 @@ namespace SlackHuddleNotifier.Services;
 /// A live credential provider backed by an embedded WebView2 that stays signed in to
 /// Slack. It reads the <c>xoxc</c> token and <c>d</c>/<c>d-s</c> cookies straight from
 /// that session, so credentials are always current and survive rotation - no manual
-/// paste. The window is kept off-screen and only surfaced when a sign-in is needed.
-/// Windows-only; registered by the WPF head.
+/// paste. The window doubles as a "Connecting…" loading screen and only reveals the
+/// Slack sign-in page when there's no existing session. Windows-only; registered by the WPF head.
 /// </summary>
 public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
 {
@@ -54,24 +56,36 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
         """;
 
     private readonly IOptionsMonitor<SlackClientOptions> _options;
+    private readonly AppStatus _status;
     private readonly ILogger<WebView2SlackCredentialProvider> _logger;
     private readonly Dispatcher _dispatcher;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    private Window? _window;
+    private Window? _window;   // hosts the WebView2 (off-screen unless a sign-in is needed)
+    private Window? _splash;   // separate "Connecting…" loading window (avoids WebView2 airspace)
     private WebView2? _web;
     private SlackCredentials? _cached;
     private bool _navigated;
 
     public WebView2SlackCredentialProvider(
         IOptionsMonitor<SlackClientOptions> options,
+        AppStatus status,
         ILogger<WebView2SlackCredentialProvider> logger)
     {
         _options = options;
+        _status = status;
         _logger = logger;
         _dispatcher = Application.Current?.Dispatcher
             ?? throw new InvalidOperationException(
                 "WebView2SlackCredentialProvider needs a WPF Application dispatcher.");
+
+        // Keep the "Connecting…" splash up until the socket actually connects, so nothing
+        // appears to vanish between reading the session and being live.
+        _status.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AppStatus.IsConnected) && _status.IsConnected)
+                _dispatcher.BeginInvoke(new Action(CloseSplash));
+        };
     }
 
     public string SourceDescription => "WebView2 Slack session";
@@ -102,6 +116,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
         try
         {
             await EnsureWebViewAsync(ct);
+            ShowSplash(); // "Connecting…" while the off-screen web view loads/checks the session
             if (!_navigated)
             {
                 // The workspace URL redirects straight to that team's sign-in (SSO), which is
@@ -111,25 +126,28 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
                 _navigated = true;
             }
 
-            // Fast path: an already-signed-in session surfaces the token within seconds.
+            // Fast path: a warm session surfaces the token within seconds, so an already-signed-in
+            // user just sees the splash and never the login page.
             var token = await PollForTokenAsync(LoggedInPollTimeout, ct);
             if (token is null)
             {
-                ShowForLogin();
+                // No existing session - hide the splash and bring the web view forward to sign in.
+                CloseSplash();
+                ShowWebViewOnScreen();
                 _logger.LogInformation(
-                    "Complete the Slack sign-in in the window (SSO included). It stays in this one " +
-                    "window and closes itself once your session is read.");
+                    "Complete the Slack sign-in in the window (SSO included). It closes itself once "
+                    + "your session is read.");
                 // Generous poll; if it still times out, the outer retry keeps polling this same
                 // window without re-navigating, so a slow sign-in is never interrupted.
                 token = await PollForTokenAsync(SignInPollTimeout, ct);
-                if (token is not null)
-                    HideOffScreen();
+                HideWebView();
+                ShowSplash(); // back to "Connecting…" while the session finishes authenticating
             }
 
             if (token is null)
             {
                 _logger.LogWarning("Could not obtain a Slack token from the WebView2 session.");
-                return null;
+                return null; // leave the splash up; the outer retry loop keeps trying
             }
 
             var cookie = await ReadCookieHeaderAsync();
@@ -139,6 +157,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
                 return null;
             }
 
+            // Splash stays up until the source reports IsConnected (handled in the constructor).
             return new SlackCredentials(token, cookie, _options.CurrentValue.WorkspaceUrl);
         }
         catch (OperationCanceledException)
@@ -162,6 +181,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
             "SlackHuddleNotifier", "WebView2");
         Directory.CreateDirectory(dataFolder);
 
+        _web = new WebView2();
         _window = new Window
         {
             Title = "Sign in to Slack",
@@ -172,9 +192,8 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
             Top = -32000,
             ShowInTaskbar = false,
             ShowActivated = false,
+            Content = _web,
         };
-        _web = new WebView2();
-        _window.Content = _web;
         _window.Show(); // off-screen; needed so the control initialises its HWND
 
         var env = await CoreWebView2Environment.CreateAsync(userDataFolder: dataFolder);
@@ -245,17 +264,121 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
         return ds is null ? $"d={d}" : $"d={d}; d-s={ds}";
     }
 
-    private void ShowForLogin()
+    /// <summary>A clean, floating "Connecting to Slack…" card - separate window to dodge WebView2 airspace.</summary>
+    private static Window BuildSplash()
     {
-        if (_window is null || _window.ShowInTaskbar) return; // already surfaced
+        var font = new FontFamily("Segoe UI");
+        var accent = new SolidColorBrush(Color.FromRgb(0x4A, 0x15, 0x4B));
+        var muted = new SolidColorBrush(Color.FromRgb(0x66, 0x70, 0x85));
+
+        var panel = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "tray.ico");
+        if (File.Exists(iconPath))
+        {
+            try
+            {
+                panel.Children.Add(new Image
+                {
+                    Source = new System.Windows.Media.Imaging.BitmapImage(new Uri(iconPath)),
+                    Width = 44,
+                    Height = 44,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Margin = new Thickness(0, 0, 0, 14)
+                });
+            }
+            catch { /* icon is a nicety, not required */ }
+        }
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Slack Huddle Notifier",
+            FontFamily = font,
+            FontSize = 17,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x10, 0x18, 0x28)),
+            HorizontalAlignment = HorizontalAlignment.Center
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Connecting to Slack…",
+            FontFamily = font,
+            FontSize = 13,
+            Foreground = muted,
+            Margin = new Thickness(0, 5, 0, 20),
+            HorizontalAlignment = HorizontalAlignment.Center
+        });
+        panel.Children.Add(new ProgressBar
+        {
+            IsIndeterminate = true,
+            Width = 240,
+            Height = 4,
+            Foreground = accent,
+            Background = new SolidColorBrush(Color.FromRgb(0xEC, 0xEE, 0xF1)),
+            BorderThickness = new Thickness(0)
+        });
+
+        var card = new Border
+        {
+            Background = System.Windows.Media.Brushes.White,
+            CornerRadius = new CornerRadius(14),
+            Padding = new Thickness(44, 34, 44, 36),
+            Margin = new Thickness(24), // leaves room for the drop shadow
+            Child = panel,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Colors.Black,
+                Opacity = 0.16,
+                BlurRadius = 30,
+                ShadowDepth = 4,
+                Direction = 270
+            }
+        };
+
+        return new Window
+        {
+            WindowStyle = WindowStyle.None,
+            AllowsTransparency = true,
+            ResizeMode = ResizeMode.NoResize,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            ShowInTaskbar = true,
+            Topmost = true,
+            Title = "Connecting to Slack…",
+            Background = System.Windows.Media.Brushes.Transparent,
+            Content = card,
+        };
+    }
+
+    private void ShowSplash()
+    {
+        _splash ??= BuildSplash();
+        _splash.Show();
+        _splash.Activate();
+    }
+
+    private void CloseSplash()
+    {
+        if (_splash is null) return;
+        _splash.Close();
+        _splash = null;
+    }
+
+    /// <summary>Bring the web-view window on-screen so the user can complete sign-in.</summary>
+    private void ShowWebViewOnScreen()
+    {
+        if (_window is null) return;
+        _window.Title = "Sign in to Slack";
         _window.ShowInTaskbar = true;
+        _window.WindowState = WindowState.Normal;
         _window.Left = (SystemParameters.PrimaryScreenWidth - _window.Width) / 2;
         _window.Top = (SystemParameters.PrimaryScreenHeight - _window.Height) / 2;
         _window.Show();
         _window.Activate();
     }
 
-    private void HideOffScreen()
+    /// <summary>Tuck the web-view window off-screen (kept alive for reuse/refresh).</summary>
+    private void HideWebView()
     {
         if (_window is null) return;
         _window.ShowInTaskbar = false;

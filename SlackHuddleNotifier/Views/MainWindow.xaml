@@ -11,7 +11,8 @@
     <Grid>
         <tb:TaskbarIcon x:Name="TrayIcon"
                         ToolTipText="Slack Huddle Notifier"
-                        IconSource="/Assets/tray.ico">
+                        IconSource="/Assets/tray.ico"
+                        DoubleClickCommand="{Binding OpenDashboardCommand}">
             <tb:TaskbarIcon.ContextMenu>
                 <ContextMenu>
                     <MenuItem Header="{Binding Status.StatusMessage}" IsEnabled="False" FontWeight="SemiBold"/>

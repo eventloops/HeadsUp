@@ -14,6 +14,7 @@ public partial class App : Application
     private IHost? _host;
     private DashboardWindow? _dashboard;
     private AboutWindow? _about;
+    private bool _dashboardShownOnce;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -33,6 +34,18 @@ public partial class App : Application
         try
         {
             await _host.StartAsync();
+
+            // Bring the overview up automatically the first time we connect (after sign-in on a
+            // cold start, or right away on a warm session).
+            var status = _host.Services.GetRequiredService<AppStatus>();
+            status.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(AppStatus.IsConnected) && status.IsConnected && !_dashboardShownOnce)
+                {
+                    _dashboardShownOnce = true;
+                    Dispatcher.BeginInvoke(new Action(ShowDashboard));
+                }
+            };
 
             // Preview the popup without a real huddle: --test-popup [--priority]
             if (e.Args.Contains("--test-popup"))
