@@ -26,6 +26,7 @@ public partial class App : Application
         var trayVm = _host.Services.GetRequiredService<TrayViewModel>();
         trayVm.OpenDashboardRequested += (_, _) => ShowDashboard();
         trayVm.AboutRequested += (_, _) => ShowAbout();
+        trayVm.ConnectRequested += (_, _) => _host!.Services.GetService<ConnectionGate>()?.Open();
 
         // Show the hidden main window (hosts the tray icon).
         var mainWindow = _host.Services.GetRequiredService<MainWindow>();
@@ -49,10 +50,14 @@ public partial class App : Application
             await _host.StartAsync();
 
             // We're back on the UI thread here (after awaiting StartAsync), so show directly.
+            var connectionGate = _host.Services.GetService<ConnectionGate>();
 
-            // First run (or --welcome): greet the user and let them pick what to be alerted on.
+            // First run (or --welcome): greet the user before connecting. The connection is
+            // held until they click Connect. Otherwise, open the gate now and connect straight away.
             if (e.Args.Contains("--welcome") || IsFirstRun())
-                ShowWelcome();
+                ShowWelcome(connectionGate);
+            else
+                connectionGate?.Open();
 
             // Dev aid: open the dashboard immediately, no connection required.
             if (e.Args.Contains("--dashboard"))
@@ -109,9 +114,14 @@ public partial class App : Application
         }
     }
 
-    private void ShowWelcome()
+    private void ShowWelcome(ConnectionGate? connectionGate)
     {
         var welcome = _host!.Services.GetRequiredService<WelcomeWindow>();
+
+        // Connecting is the one action that starts the Slack connection.
+        if (welcome.DataContext is WelcomeViewModel vm)
+            vm.ConnectRequested += (_, _) => connectionGate?.Open();
+
         welcome.Closed += (_, _) => MarkWelcomed();
         welcome.Show();
         welcome.Activate();

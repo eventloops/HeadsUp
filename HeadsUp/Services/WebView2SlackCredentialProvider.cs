@@ -57,6 +57,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
 
     private readonly IOptionsMonitor<SlackClientOptions> _options;
     private readonly AppStatus _status;
+    private readonly ConnectionGate _connectionGate;
     private readonly ILogger<WebView2SlackCredentialProvider> _logger;
     private readonly Dispatcher _dispatcher;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -70,10 +71,12 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
     public WebView2SlackCredentialProvider(
         IOptionsMonitor<SlackClientOptions> options,
         AppStatus status,
+        ConnectionGate connectionGate,
         ILogger<WebView2SlackCredentialProvider> logger)
     {
         _options = options;
         _status = status;
+        _connectionGate = connectionGate;
         _logger = logger;
         _dispatcher = Application.Current?.Dispatcher
             ?? throw new InvalidOperationException(
@@ -92,6 +95,10 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
 
     public async Task<SlackCredentials?> GetCredentialsAsync(bool forceRefresh, CancellationToken ct)
     {
+        // Hold back until the app opens the gate — on first run, after the user clicks
+        // Connect — so the sign-in / "Connecting…" UI never appears alongside the welcome.
+        await _connectionGate.WaitAsync(ct);
+
         if (!forceRefresh && _cached is not null)
             return _cached;
 

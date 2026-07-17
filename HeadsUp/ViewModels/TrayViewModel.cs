@@ -26,6 +26,7 @@ public sealed partial class TrayViewModel : ObservableObject, IDisposable
     public event EventHandler? ExitRequested;
     public event EventHandler? OpenDashboardRequested;
     public event EventHandler? AboutRequested;
+    public event EventHandler? ConnectRequested;
 
     public TrayViewModel(AppStatus status, SnoozeService snooze)
     {
@@ -64,6 +65,9 @@ public sealed partial class TrayViewModel : ObservableObject, IDisposable
         var tomorrow = DateTime.Today.AddDays(1).AddHours(8);
         return new DateTimeOffset(tomorrow, TimeZoneInfo.Local.GetUtcOffset(tomorrow));
     }
+
+    [RelayCommand]
+    private void Connect() => ConnectRequested?.Invoke(this, EventArgs.Empty);
 
     [RelayCommand]
     private void OpenDashboard() => OpenDashboardRequested?.Invoke(this, EventArgs.Empty);

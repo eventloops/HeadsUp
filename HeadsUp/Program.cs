@@ -82,7 +82,11 @@ internal static class Program
                     var clientOpts = ctx.Configuration.GetSection(SlackClientOptions.SectionName)
                         .Get<SlackClientOptions>() ?? new();
                     if (clientOpts.UseWebViewCredentials)
+                    {
+                        // Gate the WebView2 sign-in behind the welcome screen on first run.
+                        services.AddSingleton<ConnectionGate>();
                         services.AddSingleton<ISlackCredentialProvider, WebView2SlackCredentialProvider>();
+                    }
 
                     services.AddSlackClientApiHuddleDetection(ctx.Configuration);
                 }

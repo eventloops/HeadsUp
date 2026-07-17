@@ -31,6 +31,18 @@
                     <MenuItem Header="Resume alerts" Command="{Binding ResumeCommand}"
                               Visibility="{Binding IsManuallySnoozed, Converter={StaticResource BoolToVis}}"/>
                     <Separator/>
+                    <MenuItem Header="Connect to Slack" Command="{Binding ConnectCommand}">
+                        <MenuItem.Style>
+                            <Style TargetType="MenuItem">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Status.IsConnected}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </MenuItem.Style>
+                    </MenuItem>
                     <MenuItem Header="Open dashboard…" Command="{Binding OpenDashboardCommand}"/>
                     <MenuItem Header="About…" Command="{Binding ShowAboutCommand}"/>
                     <Separator/>
