@@ -5,6 +5,9 @@ service and feeds the same alert pipeline. Slack is the first and, today, the on
 This doc sketches what a **second** connector would take and the candidates worth
 considering.
 
+> For the broader product direction these connectors could feed — rule sets and
+> project-centric categorisation across providers — see [vision.md](vision.md).
+
 > ⚠️ **Not researched.** Everything below is from general knowledge of these platforms,
 > not a current investigation. Treat effort/feasibility notes as starting hypotheses to
 > verify before committing — vendor APIs (especially Microsoft Graph) move, and the
