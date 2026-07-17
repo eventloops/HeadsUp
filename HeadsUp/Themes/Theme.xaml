@@ -1,0 +1,95 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ============================================================
+         Heads-Up identity — signal amber on warm ink (light surfaces).
+         Accent is a ladder: amber = attention, green = join, red = priority.
+         ============================================================ -->
+
+    <!-- Ground & surfaces -->
+    <Color x:Key="BgColor">#FBF8F1</Color>
+    <SolidColorBrush x:Key="BrushBg" Color="{StaticResource BgColor}"/>
+    <SolidColorBrush x:Key="BrushSurface" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="BrushSurface2" Color="#F4EFE4"/>
+    <SolidColorBrush x:Key="BrushLine" Color="#E7DFCF"/>
+
+    <!-- Text -->
+    <SolidColorBrush x:Key="BrushText" Color="#1B1813"/>
+    <SolidColorBrush x:Key="BrushMuted" Color="#6C6353"/>
+    <SolidColorBrush x:Key="BrushFaint" Color="#9A9080"/>
+
+    <!-- Signal amber (brand) -->
+    <Color x:Key="AccentColor">#F5A623</Color>
+    <SolidColorBrush x:Key="BrushAccent" Color="{StaticResource AccentColor}"/>
+    <SolidColorBrush x:Key="BrushAccentPress" Color="#E3960C"/>
+    <SolidColorBrush x:Key="BrushAccentInk" Color="#1A1509"/>
+    <SolidColorBrush x:Key="BrushAccentSoft" Color="#FFF3DE"/>
+    <SolidColorBrush x:Key="BrushAccentText" Color="#B9740A"/>
+
+    <!-- Semantic: join / priority -->
+    <SolidColorBrush x:Key="BrushJoin" Color="#1AA35A"/>
+    <SolidColorBrush x:Key="BrushJoinPress" Color="#178A4C"/>
+    <SolidColorBrush x:Key="BrushPriority" Color="#E5463C"/>
+    <SolidColorBrush x:Key="BrushPriorityPress" Color="#CB3B32"/>
+    <SolidColorBrush x:Key="BrushGold" Color="#FFD24A"/>
+
+    <!-- ============================================================
+         "The Rise" mark — amber up-chevron + dot. Variants by colour so
+         usage stays a one-liner: <Image Source="{StaticResource MarkAmber}"/>.
+         The Image auto-fits the drawing bounds, so it scales cleanly.
+         ============================================================ -->
+    <DrawingImage x:Key="MarkAmber">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="{StaticResource BrushAccent}">
+                    <GeometryDrawing.Geometry>
+                        <EllipseGeometry Center="16,8.4" RadiusX="3" RadiusY="3"/>
+                    </GeometryDrawing.Geometry>
+                </GeometryDrawing>
+                <GeometryDrawing Geometry="M6.5,23 L16,13.5 L25.5,23">
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="{StaticResource BrushAccent}" Thickness="3.6"
+                             StartLineCap="Round" EndLineCap="Round" LineJoin="Round"/>
+                    </GeometryDrawing.Pen>
+                </GeometryDrawing>
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <DrawingImage x:Key="MarkWhite">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="White">
+                    <GeometryDrawing.Geometry>
+                        <EllipseGeometry Center="16,8.4" RadiusX="3" RadiusY="3"/>
+                    </GeometryDrawing.Geometry>
+                </GeometryDrawing>
+                <GeometryDrawing Geometry="M6.5,23 L16,13.5 L25.5,23">
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="White" Thickness="3.6"
+                             StartLineCap="Round" EndLineCap="Round" LineJoin="Round"/>
+                    </GeometryDrawing.Pen>
+                </GeometryDrawing>
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <DrawingImage x:Key="MarkMuted">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="{StaticResource BrushFaint}">
+                    <GeometryDrawing.Geometry>
+                        <EllipseGeometry Center="16,8.4" RadiusX="3" RadiusY="3"/>
+                    </GeometryDrawing.Geometry>
+                </GeometryDrawing>
+                <GeometryDrawing Geometry="M6.5,23 L16,13.5 L25.5,23">
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="{StaticResource BrushFaint}" Thickness="3.6"
+                             StartLineCap="Round" EndLineCap="Round" LineJoin="Round"/>
+                    </GeometryDrawing.Pen>
+                </GeometryDrawing>
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+</ResourceDictionary>

@@ -140,7 +140,8 @@ workspace:
 }
 ```
 
-On first launch you'll get a *Connecting to Slack…* window; if there's no live session it
+On first launch you'll get a short **welcome** — pick which activity to be alerted on, then
+*Connect to Slack*. A *Connecting to Slack…* window follows; if there's no live session it
 shows the Slack sign-in, you log in once, and it connects itself and opens the dashboard.
 `WorkspaceUrl` just points the sign-in at the right workspace.
 
@@ -257,11 +258,13 @@ settings are preserved.
 
 ## Try it without Slack
 
-Preview the popup with no tokens configured:
+Preview the interface with no tokens configured:
 
 ```
-HeadsUp.exe --test-popup              # standard
-HeadsUp.exe --test-popup --priority   # priority variant
+HeadsUp.exe --test-popup              # a sample alert popup
+HeadsUp.exe --test-popup --priority   # the priority (incoming-call) variant
+HeadsUp.exe --welcome                 # the first-run welcome screen
+HeadsUp.exe --dashboard               # open the dashboard directly
 ```
 
 ## Logs

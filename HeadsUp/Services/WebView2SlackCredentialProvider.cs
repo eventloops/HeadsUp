@@ -279,8 +279,8 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
     private static Window BuildSplash()
     {
         var font = new FontFamily("Segoe UI");
-        var accent = new SolidColorBrush(Color.FromRgb(0x4A, 0x15, 0x4B));
-        var muted = new SolidColorBrush(Color.FromRgb(0x66, 0x70, 0x85));
+        var accent = new SolidColorBrush(Color.FromRgb(0xF5, 0xA6, 0x23)); // signal amber
+        var muted = new SolidColorBrush(Color.FromRgb(0x6C, 0x63, 0x53));  // warm grey
 
         var panel = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
 
@@ -307,7 +307,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
             FontFamily = font,
             FontSize = 17,
             FontWeight = FontWeights.SemiBold,
-            Foreground = new SolidColorBrush(Color.FromRgb(0x10, 0x18, 0x28)),
+            Foreground = new SolidColorBrush(Color.FromRgb(0x1B, 0x18, 0x13)),
             HorizontalAlignment = HorizontalAlignment.Center
         });
         panel.Children.Add(new TextBlock
@@ -325,7 +325,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
             Width = 240,
             Height = 4,
             Foreground = accent,
-            Background = new SolidColorBrush(Color.FromRgb(0xEC, 0xEE, 0xF1)),
+            Background = new SolidColorBrush(Color.FromRgb(0xF4, 0xEF, 0xE4)),
             BorderThickness = new Thickness(0)
         });
 

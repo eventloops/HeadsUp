@@ -5,12 +5,12 @@
         Width="560" Height="760" MinWidth="480" MinHeight="560"
         WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI" FontSize="13" TextOptions.TextFormattingMode="Ideal"
-        Background="#FFF4F5F7">
+        Background="{StaticResource BrushBg}">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <Style x:Key="Card" TargetType="Border">
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="BorderBrush" Value="#FFE6E8EC"/>
+            <Setter Property="Background" Value="{StaticResource BrushSurface}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BrushLine}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="10"/>
             <Setter Property="Padding" Value="16"/>
@@ -18,38 +18,41 @@
         <Style x:Key="H1" TargetType="TextBlock">
             <Setter Property="FontSize" Value="21"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="#FF101828"/>
+            <Setter Property="Foreground" Value="{StaticResource BrushText}"/>
         </Style>
         <Style x:Key="H2" TargetType="TextBlock">
             <Setter Property="FontSize" Value="15"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="#FF101828"/>
+            <Setter Property="Foreground" Value="{StaticResource BrushText}"/>
         </Style>
         <Style x:Key="Muted" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#FF667085"/>
+            <Setter Property="Foreground" Value="{StaticResource BrushMuted}"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
         <Style x:Key="Faint" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#FF98A2B3"/>
+            <Setter Property="Foreground" Value="{StaticResource BrushFaint}"/>
+        </Style>
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource BrushText}"/>
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource BrushText}"/>
         </Style>
 
-        <!-- Accent (Add) button -->
+        <!-- Accent (Add) button — amber with ink text -->
         <Style x:Key="AddButton" TargetType="Button">
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Foreground" Value="{StaticResource BrushAccentInk}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="b" Background="#FF4A154B" CornerRadius="6" Padding="14,5">
+                        <Border x:Name="b" Background="{StaticResource BrushAccent}" CornerRadius="7" Padding="14,6">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="#FF611F69"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="#FF3D1140"/>
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource BrushAccentPress}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -57,9 +60,9 @@
             </Setter>
         </Style>
 
-        <!-- Quiet (Remove) button -->
+        <!-- Quiet (Remove / Mute) button — muted, red on hover -->
         <Style x:Key="RemoveButton" TargetType="Button">
-            <Setter Property="Foreground" Value="#FF667085"/>
+            <Setter Property="Foreground" Value="{StaticResource BrushMuted}"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -70,8 +73,8 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="#FFFEF3F2"/>
-                                <Setter TargetName="c" Property="TextElement.Foreground" Value="#FFB42318"/>
+                                <Setter TargetName="b" Property="Background" Value="#FFFBECEA"/>
+                                <Setter TargetName="c" Property="TextElement.Foreground" Value="{StaticResource BrushPriority}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -87,7 +90,7 @@
             <Setter Property="Margin" Value="0,1"/>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#FFF2F4F7"/>
+                    <Setter Property="Background" Value="{StaticResource BrushSurface2}"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -104,10 +107,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="#FFF2F4F7"/>
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource BrushSurface2}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="#FFEAECF0"/>
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource BrushLine}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -133,7 +136,7 @@
             </Setter>
         </Style>
         <Style TargetType="TabItem">
-            <Setter Property="Foreground" Value="#FF667085"/>
+            <Setter Property="Foreground" Value="{StaticResource BrushMuted}"/>
             <Setter Property="FontSize" Value="15"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -147,11 +150,11 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Foreground" Value="#FF101828"/>
+                                <Setter Property="Foreground" Value="{StaticResource BrushText}"/>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="Foreground" Value="#FF101828"/>
-                                <Setter TargetName="b" Property="BorderBrush" Value="#FF4A154B"/>
+                                <Setter Property="Foreground" Value="{StaticResource BrushText}"/>
+                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource BrushAccent}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -168,10 +171,13 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Header -->
-        <StackPanel Grid.Row="0" Margin="2,0,0,16">
-            <TextBlock Text="Heads-Up" Style="{StaticResource H1}"/>
-            <TextBlock Text="Status, alerts &amp; priority users" Style="{StaticResource Muted}" Margin="0,1,0,0"/>
+        <!-- Header: the Rise mark + wordmark -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="2,0,0,18">
+            <Image Source="{StaticResource MarkAmber}" Width="30" Height="30" Margin="0,3,13,0" VerticalAlignment="Top"/>
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="Heads-Up" Style="{StaticResource H1}"/>
+                <TextBlock Text="Your lookout for Slack" Style="{StaticResource Muted}" Margin="0,1,0,0"/>
+            </StackPanel>
         </StackPanel>
 
         <!-- Status card -->
@@ -181,10 +187,10 @@
                     <Ellipse Width="10" Height="10" VerticalAlignment="Center" Margin="0,0,9,0">
                         <Ellipse.Style>
                             <Style TargetType="Ellipse">
-                                <Setter Property="Fill" Value="#FFB0B7C0"/>
+                                <Setter Property="Fill" Value="{StaticResource BrushFaint}"/>
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding Status.IsConnected}" Value="True">
-                                        <Setter Property="Fill" Value="#FF12B76A"/>
+                                        <Setter Property="Fill" Value="{StaticResource BrushJoin}"/>
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -194,12 +200,12 @@
                 </StackPanel>
 
                 <!-- Muted banner (snooze / Slack DND) -->
-                <Border Background="#FFFBF4E6" BorderBrush="#FFF3D48A" BorderThickness="1" CornerRadius="8"
-                        Padding="10,7" Margin="0,0,0,12"
+                <Border Background="{StaticResource BrushAccentSoft}" BorderBrush="{StaticResource BrushAccent}" BorderThickness="1"
+                        CornerRadius="8" Padding="10,7" Margin="0,0,0,12"
                         Visibility="{Binding IsMuted, Converter={StaticResource BoolToVis}}">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="&#x1F515;" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding MuteStatus}" Foreground="#FF7A5B12" VerticalAlignment="Center"
+                        <TextBlock Text="{Binding MuteStatus}" Foreground="{StaticResource BrushAccentText}" VerticalAlignment="Center"
                                    FontWeight="SemiBold"/>
                     </StackPanel>
                 </Border>
@@ -301,10 +307,10 @@
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
                                             <Grid Width="34" Height="34" Grid.Column="0" Margin="0,0,11,0" VerticalAlignment="Top">
-                                                <Ellipse Fill="#FFEDE7F0"/>
+                                                <Ellipse Fill="{StaticResource BrushAccentSoft}"/>
                                                 <TextBlock Text="{Binding Initials}" HorizontalAlignment="Center"
                                                            VerticalAlignment="Center" FontWeight="SemiBold"
-                                                           FontSize="12" Foreground="#FF4A154B"/>
+                                                           FontSize="12" Foreground="{StaticResource BrushAccentText}"/>
                                                 <Ellipse>
                                                     <Ellipse.Fill>
                                                         <ImageBrush ImageSource="{Binding AvatarUrl}" Stretch="UniformToFill"/>
@@ -342,7 +348,7 @@
             </Border>
 
             <!-- Muted channels -->
-            <Border Grid.Row="2" Background="#FFF7F3FB" BorderBrush="#FFE9DEF2" BorderThickness="1"
+            <Border Grid.Row="2" Background="{StaticResource BrushSurface2}" BorderBrush="{StaticResource BrushLine}" BorderThickness="1"
                     CornerRadius="8" Padding="10,8" Margin="0,10,0,0">
                 <Border.Style>
                     <Style TargetType="Border">
@@ -363,12 +369,12 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border Background="White" BorderBrush="#FFD9C7E8" BorderThickness="1"
-                                        CornerRadius="12" Padding="8,3" Margin="0,0,6,6">
+                                <Border Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushLine}" BorderThickness="1"
+                                        CornerRadius="12" Padding="9,3" Margin="0,0,6,6">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="{Binding Name, StringFormat='#{0}'}" VerticalAlignment="Center" FontSize="12"/>
-                                        <Button Content="✕" FontSize="11" Margin="6,0,0,0" Padding="2,0"
-                                                Foreground="#FF98A2B3" Background="Transparent" BorderThickness="0"
+                                        <Button Content="✕" FontSize="11" Margin="7,0,0,0" Padding="2,0"
+                                                Foreground="{StaticResource BrushFaint}" Background="Transparent" BorderThickness="0"
                                                 Cursor="Hand" VerticalAlignment="Center"
                                                 Command="{Binding DataContext.UnmuteCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                 CommandParameter="{Binding}"
@@ -425,7 +431,7 @@
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
                                             <Grid Width="30" Height="30" Grid.Column="0" Margin="0,0,10,0">
-                                                <Ellipse Fill="#FFE4E7EC"/>
+                                                <Ellipse Fill="{StaticResource BrushSurface2}"/>
                                                 <Ellipse>
                                                     <Ellipse.Fill>
                                                         <ImageBrush ImageSource="{Binding AvatarUrl}" Stretch="UniformToFill"/>
@@ -449,11 +455,12 @@
             <TextBlock Grid.Row="2" Text="Add a priority user" Style="{StaticResource H2}" FontSize="13" Margin="2,16,0,6"/>
 
             <!-- Search box with placeholder -->
-            <Border Grid.Row="3" Background="White" BorderBrush="#FFD0D5DD" BorderThickness="1" CornerRadius="8" Padding="10,0">
+            <Border Grid.Row="3" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushLine}" BorderThickness="1" CornerRadius="8" Padding="10,0">
                 <Grid>
                     <TextBox BorderThickness="0" Background="Transparent" VerticalContentAlignment="Center" Height="36"
+                             Foreground="{StaticResource BrushText}"
                              Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"/>
-                    <TextBlock Text="Type a name to search your workspace…" Foreground="#FF98A2B3"
+                    <TextBlock Text="Type a name to search your workspace…" Foreground="{StaticResource BrushFaint}"
                                IsHitTestVisible="False" VerticalAlignment="Center" Margin="2,0,0,0">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
@@ -483,7 +490,7 @@
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <Grid Width="30" Height="30" Grid.Column="0" Margin="0,0,10,0">
-                                            <Ellipse Fill="#FFE4E7EC"/>
+                                            <Ellipse Fill="{StaticResource BrushSurface2}"/>
                                             <Ellipse>
                                                 <Ellipse.Fill>
                                                     <ImageBrush ImageSource="{Binding AvatarUrl}" Stretch="UniformToFill"/>

@@ -48,6 +48,14 @@ public partial class App : Application
         {
             await _host.StartAsync();
 
+            // First run (or --welcome): greet the user and let them pick what to be alerted on.
+            if (e.Args.Contains("--welcome") || IsFirstRun())
+                Dispatcher.BeginInvoke(new Action(ShowWelcome));
+
+            // Dev aid: open the dashboard immediately, no connection required.
+            if (e.Args.Contains("--dashboard"))
+                Dispatcher.BeginInvoke(new Action(ShowDashboard));
+
             // Preview the popup without a real huddle: --test-popup [--priority]
             if (e.Args.Contains("--test-popup"))
             {
@@ -97,6 +105,32 @@ public partial class App : Application
         {
             _about.Activate();
         }
+    }
+
+    private void ShowWelcome()
+    {
+        var welcome = _host!.Services.GetRequiredService<WelcomeWindow>();
+        welcome.Closed += (_, _) => MarkWelcomed();
+        welcome.Show();
+        welcome.Activate();
+    }
+
+    /// <summary>Marker so the welcome screen only greets on the very first run.</summary>
+    private static string WelcomedMarkerPath => System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "HeadsUp", "welcomed.flag");
+
+    private static bool IsFirstRun() => !System.IO.File.Exists(WelcomedMarkerPath);
+
+    private static void MarkWelcomed()
+    {
+        try
+        {
+            var path = WelcomedMarkerPath;
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
+            System.IO.File.WriteAllText(path, DateTimeOffset.Now.ToString("o"));
+        }
+        catch { /* best effort; worst case the welcome shows again next launch */ }
     }
 
     protected override async void OnExit(ExitEventArgs e)

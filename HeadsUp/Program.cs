@@ -102,5 +102,7 @@ internal static class Program
                 services.AddTransient<DashboardViewModel>();
                 services.AddTransient<DashboardWindow>();
                 services.AddTransient<AboutWindow>();
+                services.AddTransient<WelcomeViewModel>();
+                services.AddTransient<WelcomeWindow>();
             });
 }
