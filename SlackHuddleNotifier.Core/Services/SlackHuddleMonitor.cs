@@ -23,6 +23,7 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
     private readonly ISlackSocketModeClient _socketClient;
     private readonly ISlackApiClient _apiClient;
     private readonly IOptionsMonitor<SlackOptions> _slackOptions;
+    private readonly IOptionsMonitor<DetectionOptions> _detectionOptions;
     private readonly ILogger<SlackHuddleMonitor> _logger;
 
     // Channel ID -> last time we notified for it, to avoid duplicate events.
@@ -37,11 +38,13 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
         ISlackSocketModeClient socketClient,
         ISlackApiClient apiClient,
         IOptionsMonitor<SlackOptions> slackOptions,
+        IOptionsMonitor<DetectionOptions> detectionOptions,
         ILogger<SlackHuddleMonitor> logger)
     {
         _socketClient = socketClient;
         _apiClient = apiClient;
         _slackOptions = slackOptions;
+        _detectionOptions = detectionOptions;
         _logger = logger;
     }
 
@@ -105,8 +108,9 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
         if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(channelId))
             return;
 
-        // No popup for huddles you started yourself.
-        if (userId.Equals(_selfUserId, StringComparison.OrdinalIgnoreCase))
+        // No popup for huddles you started yourself, unless the debug toggle is on.
+        if (userId.Equals(_selfUserId, StringComparison.OrdinalIgnoreCase)
+            && !_detectionOptions.CurrentValue.NotifyOwnHuddles)
         {
             _logger.LogDebug("Ignoring own huddle in channel {Channel}.", channelId);
             return;

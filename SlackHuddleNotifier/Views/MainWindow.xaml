@@ -14,9 +14,10 @@
                         IconSource="/Assets/tray.ico">
             <tb:TaskbarIcon.ContextMenu>
                 <ContextMenu>
-                    <MenuItem Header="{Binding StatusText}" IsEnabled="False" FontWeight="SemiBold"/>
+                    <MenuItem Header="{Binding Status.StatusMessage}" IsEnabled="False" FontWeight="SemiBold"/>
                     <Separator/>
-                    <MenuItem Header="About..." Command="{Binding ShowAboutCommand}"/>
+                    <MenuItem Header="Open dashboard…" Command="{Binding OpenDashboardCommand}"/>
+                    <MenuItem Header="About…" Command="{Binding ShowAboutCommand}"/>
                     <Separator/>
                     <MenuItem Header="Exit" Command="{Binding ExitCommand}"/>
                 </ContextMenu>

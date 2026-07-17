@@ -38,6 +38,8 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
 
     private readonly ISlackCredentialProvider _credentials;
     private readonly IOptionsMonitor<SlackOptions> _slackOptions;
+    private readonly IOptionsMonitor<DetectionOptions> _detectionOptions;
+    private readonly AppStatus _status;
     private readonly ILogger<SlackWebHuddleSource> _logger;
 
     // Channel ID -> last time we notified for it, to avoid duplicate events.
@@ -53,15 +55,21 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
     public SlackWebHuddleSource(
         ISlackCredentialProvider credentials,
         IOptionsMonitor<SlackOptions> slackOptions,
+        IOptionsMonitor<DetectionOptions> detectionOptions,
+        AppStatus status,
         ILogger<SlackWebHuddleSource> logger)
     {
         _credentials = credentials;
         _slackOptions = slackOptions;
+        _detectionOptions = detectionOptions;
+        _status = status;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _status.CredentialSource = _credentials.SourceDescription;
+
         // Outer loop: (re)acquire credentials, authenticate, then run the socket until it
         // drops. A missing or rejected credential forces a refresh on the next round, which
         // is how session rotation is absorbed when a live provider (e.g. WebView2) is used.
@@ -81,6 +89,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
             {
                 // A dropped socket lands here; keep the same creds and let the next
                 // auth.test decide whether they have actually gone stale.
+                _status.SetConnection(false, "Reconnecting…");
                 _logger.LogWarning(ex, "Slack client connection ended; retrying in {Delay}s.",
                     ReconnectDelay.TotalSeconds);
                 refreshNext = false;
@@ -107,6 +116,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
         var creds = await _credentials.GetCredentialsAsync(forceRefresh, stoppingToken);
         if (creds is null)
         {
+            _status.SetConnection(false, "Waiting for sign-in…");
             _logger.LogWarning(
                 "No Slack credentials available yet from {Source}; waiting {Delay}s before retry.",
                 _credentials.SourceDescription, ReconnectDelay.TotalSeconds);
@@ -120,6 +130,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
         var auth = await _client.AuthTestAsync(stoppingToken);
         if (!auth.Bool("ok"))
         {
+            _status.SetConnection(false, "Reconnecting…");
             _logger.LogWarning(
                 "Slack auth.test failed: {Error}. Refreshing credentials from {Source} and retrying.",
                 auth.Str("error") ?? "unknown", _credentials.SourceDescription);
@@ -128,6 +139,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
 
         _teamId = auth.Str("team_id");
         _selfUserId = auth.Str("user_id");
+        _status.SetAccount(auth.Str("user"), auth.Str("team"));
         _logger.LogInformation(
             "Slack client session OK: authenticated as {User} in team {Team}.",
             auth.Str("user"), auth.Str("team"));
@@ -156,6 +168,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
         ws.Options.SetRequestHeader("Origin", "https://app.slack.com");
         await ws.ConnectAsync(new Uri(url), stoppingToken);
         _logger.LogInformation("Connected to Slack real-time WebSocket. Watching for huddles.");
+        _status.SetConnection(true, "Watching for huddles");
 
         using var pingCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         var pingTask = KeepAliveAsync(ws, pingCts.Token);
@@ -272,8 +285,9 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
         if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(channelId))
             return;
 
-        // No popup for huddles you started yourself.
-        if (userId.Equals(_selfUserId, StringComparison.OrdinalIgnoreCase))
+        // No popup for huddles you started yourself, unless the debug toggle is on.
+        if (userId.Equals(_selfUserId, StringComparison.OrdinalIgnoreCase)
+            && !_detectionOptions.CurrentValue.NotifyOwnHuddles)
         {
             _logger.LogDebug("Ignoring own huddle in channel {Channel}.", channelId);
             return;

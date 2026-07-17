@@ -23,6 +23,13 @@ public static class ServiceCollectionExtensions
         services.Configure<NotificationOptions>(configuration.GetSection(NotificationOptions.SectionName));
         services.Configure<DetectionOptions>(configuration.GetSection(DetectionOptions.SectionName));
 
+        // Shared live status the tray + dashboard bind to; the detection source updates it.
+        var detection = configuration.GetSection(DetectionOptions.SectionName).Get<DetectionOptions>() ?? new();
+        services.AddSingleton(new AppStatus { Mode = detection.Mode, StatusMessage = "Starting…" });
+
+        // Persists priority-user edits back to appsettings.Local.json (hot-reloaded).
+        services.AddSingleton<IPrioritySettingsStore, JsonPrioritySettingsStore>();
+
         services.AddHostedService<HuddleNotificationCoordinator>();
 
         return services;
@@ -66,6 +73,9 @@ public static class ServiceCollectionExtensions
         // register a live ISlackCredentialProvider (e.g. WebView2) BEFORE calling this, and
         // TryAdd leaves that one in place.
         services.TryAddSingleton<ISlackCredentialProvider, ConfigSlackCredentialProvider>();
+
+        // Workspace directory for choosing priority users by name (client-API mode).
+        services.TryAddSingleton<IUserDirectory, SlackWebUserDirectory>();
 
         services.AddSingleton<SlackWebHuddleSource>();
         services.AddSingleton<IHuddleEventSource>(sp => sp.GetRequiredService<SlackWebHuddleSource>());

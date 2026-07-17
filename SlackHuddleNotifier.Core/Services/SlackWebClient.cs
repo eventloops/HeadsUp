@@ -79,6 +79,15 @@ public sealed class SlackWebClient : IDisposable
     public Task<JsonElement> ConversationInfoAsync(string channelId, CancellationToken ct = default) =>
         CallAsync("conversations.info", new[] { new KeyValuePair<string, string>("channel", channelId) }, ct);
 
+    /// <summary>Lists workspace members, one page at a time (cursor via <c>response_metadata.next_cursor</c>).</summary>
+    public Task<JsonElement> UsersListAsync(string? cursor, int limit, CancellationToken ct = default)
+    {
+        var args = new List<KeyValuePair<string, string>> { new("limit", limit.ToString()) };
+        if (!string.IsNullOrEmpty(cursor))
+            args.Add(new("cursor", cursor));
+        return CallAsync("users.list", args, ct);
+    }
+
     private static string NormalizeCookie(string cookie)
     {
         cookie = (cookie ?? string.Empty).Trim();

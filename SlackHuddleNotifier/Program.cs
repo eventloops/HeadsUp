@@ -102,5 +102,10 @@ internal static class Program
                 // WPF ViewModels & Views (singletons so the DI container owns lifetime)
                 services.AddSingleton<TrayViewModel>();
                 services.AddSingleton<MainWindow>();
+
+                // On-demand windows (fresh instance each open).
+                services.AddTransient<DashboardViewModel>();
+                services.AddTransient<DashboardWindow>();
+                services.AddTransient<AboutWindow>();
             });
 }
