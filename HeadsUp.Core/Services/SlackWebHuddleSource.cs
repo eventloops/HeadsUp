@@ -7,7 +7,6 @@ using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 
 namespace HeadsUp.Services;
 
@@ -34,8 +33,10 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
 {
     /// <summary>Cooldown before a new huddle in the same channel fires another notification.</summary>
     private static readonly TimeSpan DedupeCooldown = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan PingInterval = TimeSpan.FromSeconds(20);
-    private static readonly TimeSpan ReconnectDelay = TimeSpan.FromSeconds(10);
+
+    // Internal and instance-scoped so integration tests can shrink the waits.
+    internal TimeSpan _pingInterval = TimeSpan.FromSeconds(20);
+    internal TimeSpan _reconnectDelay = TimeSpan.FromSeconds(10);
 
     private readonly ISlackCredentialProvider _credentials;
     private readonly IOptionsMonitor<SlackOptions> _slackOptions;
@@ -48,8 +49,9 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
     private readonly ConcurrentDictionary<string, DateTimeOffset> _recentHuddles = new();
 
     private SlackWebClient? _client;
-    private string? _teamId;
-    private string? _selfUserId;
+    // Internal (not private) so frame-level tests can simulate an authenticated session.
+    internal string? _teamId;
+    internal string? _selfUserId;
     private int _messageId;
 
     public event EventHandler<Alert>? AlertRaised;
@@ -95,13 +97,13 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
                 // auth.test decide whether they have actually gone stale.
                 _status.SetConnection(false, "Reconnecting…");
                 _logger.LogWarning(ex, "Slack client connection ended; retrying in {Delay}s.",
-                    ReconnectDelay.TotalSeconds);
+                    _reconnectDelay.TotalSeconds);
                 refreshNext = false;
             }
 
             try
             {
-                await Task.Delay(ReconnectDelay, stoppingToken);
+                await Task.Delay(_reconnectDelay, stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -123,7 +125,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
             _status.SetConnection(false, "Waiting for sign-in…");
             _logger.LogWarning(
                 "No Slack credentials available yet from {Source}; waiting {Delay}s before retry.",
-                _credentials.SourceDescription, ReconnectDelay.TotalSeconds);
+                _credentials.SourceDescription, _reconnectDelay.TotalSeconds);
             return false;
         }
 
@@ -215,7 +217,8 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
         }
     }
 
-    private void HandleFrame(string json)
+    // Internal so tests can feed frames without a live socket.
+    internal void HandleFrame(string json)
     {
         JsonElement root;
         try
@@ -239,7 +242,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
 
         var alerts = _alertOptions.CurrentValue;
 
-        if (subtype is "huddle_thread" or "sh_room_created")
+        if (AlertClassifier.IsHuddleSubtype(subtype))
         {
             if (alerts.Huddles)
                 HandleHuddle(root, subtype);
@@ -282,27 +285,11 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
         if (user.Equals(_selfUserId, StringComparison.OrdinalIgnoreCase))
             return;
 
-        var isMention = _selfUserId is not null &&
-                        text.Contains($"<@{_selfUserId}>", StringComparison.OrdinalIgnoreCase);
-        var isDm = channel.StartsWith('D');
-
-        // Priority: a direct @mention beats "it's a DM" beats a keyword match.
-        AlertKind kind;
-        if (alerts.Mentions && isMention) kind = AlertKind.Mention;
-        else if (alerts.DirectMessages && isDm) kind = AlertKind.DirectMessage;
-        else if (alerts.Keywords && MatchesKeyword(text, alerts.KeywordList)) kind = AlertKind.Keyword;
-        else return;
+        if (AlertClassifier.ClassifyMessage(text, channel, _selfUserId, alerts) is not { } kind)
+            return;
 
         _logger.LogInformation("{Kind} alert: user={User} channel={Channel}.", kind, user, channel);
         _ = RaiseMessageAlertAsync(user, channel, text, kind);
-    }
-
-    private static bool MatchesKeyword(string text, IReadOnlyList<string> keywords)
-    {
-        foreach (var k in keywords)
-            if (!string.IsNullOrWhiteSpace(k) && text.Contains(k, StringComparison.OrdinalIgnoreCase))
-                return true;
-        return false;
     }
 
     private async Task RaiseMessageAlertAsync(string userId, string channelId, string text, AlertKind kind)
@@ -340,7 +327,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
                 IsPriorityUser: isPriority,
                 OccurredAt: DateTimeOffset.Now,
                 Kind: kind,
-                Preview: Preview(text)));
+                Preview: AlertClassifier.Preview(text)));
         }
         catch (Exception ex)
         {
@@ -348,18 +335,11 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
         }
     }
 
-    /// <summary>Strip Slack's angle-bracket tokens (mentions/links/channels) and clamp length.</summary>
-    private static string Preview(string text)
-    {
-        text = Regex.Replace(text, "<[^>]*>", string.Empty).Replace('\n', ' ').Trim();
-        return text.Length > 140 ? text[..140] + "…" : text;
-    }
-
     private async Task KeepAliveAsync(ClientWebSocket ws, CancellationToken ct)
     {
         try
         {
-            using var timer = new PeriodicTimer(PingInterval);
+            using var timer = new PeriodicTimer(_pingInterval);
             while (await timer.WaitForNextTickAsync(ct))
             {
                 if (ws.State != WebSocketState.Open)

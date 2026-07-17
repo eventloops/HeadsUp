@@ -25,7 +25,6 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
-    <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
     <PackageReference Include="Serilog" Version="4.1.0" />
     <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
@@ -44,7 +43,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <!-- Embedded as a WPF resource so the tray icon's pack URI (/Assets/tray.ico) resolves,
-         and copied to output so the toast logo can reference it on disk. -->
+         and copied to output so the connecting-splash logo can reference it on disk. -->
     <Resource Include="Assets\tray.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Resource>

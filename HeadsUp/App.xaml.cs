@@ -31,21 +31,22 @@ public partial class App : Application
         var mainWindow = _host.Services.GetRequiredService<MainWindow>();
         mainWindow.Show();
 
+        // Bring the overview up automatically the first time we connect (after sign-in on a
+        // cold start, or right away on a warm session). Subscribed before StartAsync so a
+        // fast connect can't slip in ahead of the handler.
+        var status = _host.Services.GetRequiredService<AppStatus>();
+        status.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(AppStatus.IsConnected) && status.IsConnected && !_dashboardShownOnce)
+            {
+                _dashboardShownOnce = true;
+                Dispatcher.BeginInvoke(new Action(ShowDashboard));
+            }
+        };
+
         try
         {
             await _host.StartAsync();
-
-            // Bring the overview up automatically the first time we connect (after sign-in on a
-            // cold start, or right away on a warm session).
-            var status = _host.Services.GetRequiredService<AppStatus>();
-            status.PropertyChanged += (_, args) =>
-            {
-                if (args.PropertyName == nameof(AppStatus.IsConnected) && status.IsConnected && !_dashboardShownOnce)
-                {
-                    _dashboardShownOnce = true;
-                    Dispatcher.BeginInvoke(new Action(ShowDashboard));
-                }
-            };
 
             // Preview the popup without a real huddle: --test-popup [--priority]
             if (e.Args.Contains("--test-popup"))

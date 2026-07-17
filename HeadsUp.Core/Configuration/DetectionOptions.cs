@@ -9,13 +9,14 @@ public sealed class DetectionOptions
 
     /// <summary>
     /// How activity is detected:
-    /// "SlackClientApi" - the current prototype: a browser/desktop session (xoxc token + "d"
-    ///   cookie, obtained via an embedded Slack sign-in); no Slack app and no admin approval,
-    ///   but unofficial and undocumented. Cross-platform.
-    /// "SlackApi" (default) - the goal: a proper admin-approved Slack app using your own OAuth
-    ///   tokens. Robust and sanctioned; the target once app permission is granted.
+    /// "SlackClientApi" (default) - the current prototype: a browser/desktop session (xoxc
+    ///   token + "d" cookie, obtained via an embedded Slack sign-in); no Slack app and no
+    ///   admin approval, but unofficial and undocumented. Cross-platform. The default because
+    ///   it is the only route that works today.
+    /// "SlackApi" - the goal: a proper admin-approved Slack app using your own OAuth
+    ///   tokens. Robust and sanctioned; becomes the default once app permission is granted.
     /// </summary>
-    public string Mode { get; set; } = SlackApi;
+    public string Mode { get; set; } = SlackClientApi;
 
     /// <summary>
     /// Debug/testing aid: when true, huddles you start yourself also raise a notification

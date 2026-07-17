@@ -221,7 +221,8 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
             var url = _web!.CoreWebView2.Source;
             if (url != lastUrl)
             {
-                _logger.LogDebug("WebView2 is at {Url}", url);
+                // Sanitized: SSO redirects carry auth codes in the query string.
+                _logger.LogDebug("WebView2 is at {Url}", SanitizeUrl(url));
                 lastUrl = url;
             }
 
@@ -243,8 +244,18 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
 
             await Task.Delay(TimeSpan.FromSeconds(1.5), ct);
         }
-        _logger.LogDebug("No token within {Timeout}s; window is at {Url}.", timeout.TotalSeconds, lastUrl);
+        _logger.LogDebug("No token within {Timeout}s; window is at {Url}.",
+            timeout.TotalSeconds, SanitizeUrl(lastUrl));
         return null;
+    }
+
+    /// <summary>Strips the query/fragment before logging - SSO hops put auth codes there.</summary>
+    private static string SanitizeUrl(string? url)
+    {
+        if (string.IsNullOrEmpty(url))
+            return "?";
+        var cut = url.IndexOfAny(['?', '#']);
+        return cut < 0 ? url : url[..cut];
     }
 
     private async Task<string?> ReadCookieHeaderAsync()

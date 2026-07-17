@@ -20,6 +20,10 @@ public sealed class WpfNotificationService : INotificationService
     private readonly ILogger<WpfNotificationService> _logger;
     private readonly Dispatcher _dispatcher;
 
+    // Popups currently on screen, so simultaneous alerts stack instead of overlapping.
+    // Only touched on the dispatcher thread.
+    private readonly List<HuddlePopupWindow> _openPopups = new();
+
     public WpfNotificationService(
         IOptionsMonitor<NotificationOptions> options,
         ILogger<WpfNotificationService> logger)
@@ -53,8 +57,12 @@ public sealed class WpfNotificationService : INotificationService
 
         var window = new HuddlePopupWindow
         {
-            DataContext = vm
+            DataContext = vm,
+            // Stack above any popups already showing (12px gap between each).
+            StackOffset = _openPopups.Sum(w => w.ActualHeight + 12)
         };
+        _openPopups.Add(window);
+        window.Closed += (_, _) => _openPopups.Remove(window);
 
         // Auto-dismiss after configured duration.
         var timer = new DispatcherTimer

@@ -22,6 +22,12 @@ public partial class HuddlePopupWindow : Window
         LayoutUpdated += (_, _) => PositionBottomRight();
     }
 
+    /// <summary>
+    /// Extra distance (in DIPs) above the bottom-right anchor so concurrent popups
+    /// stack upward instead of overlapping. Set by the notification service before Show.
+    /// </summary>
+    public double StackOffset { get; set; }
+
     private void PositionBottomRight()
     {
         var screen = Screens.Primary ?? Screens.All.FirstOrDefault();
@@ -32,7 +38,7 @@ public partial class HuddlePopupWindow : Window
         var frame = PixelSize.FromSize(Bounds.Size, screen.Scaling);
         Position = new PixelPoint(
             workArea.X + workArea.Width - frame.Width - 16,
-            workArea.Y + workArea.Height - frame.Height - 16);
+            workArea.Y + workArea.Height - frame.Height - 16 - (int)(StackOffset * screen.Scaling));
     }
 
     /// <summary>Marks the popup as a priority huddle (red header, green join button).</summary>

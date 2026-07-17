@@ -10,6 +10,12 @@ public partial class HuddlePopupWindow : Window
         Loaded += OnLoaded;
     }
 
+    /// <summary>
+    /// Extra distance above the bottom-right anchor so concurrent popups stack
+    /// upward instead of overlapping. Set by the notification service before Show.
+    /// </summary>
+    public double StackOffset { get; set; }
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         PositionBottomRight();
@@ -19,7 +25,7 @@ public partial class HuddlePopupWindow : Window
     {
         var workArea = SystemParameters.WorkArea;
         Left = workArea.Right - Width - 16;
-        Top = workArea.Bottom - ActualHeight - 16;
+        Top = workArea.Bottom - ActualHeight - 16 - StackOffset;
     }
 
     /// <summary>Shrinks the countdown bar from full width to zero over the popup lifetime.</summary>

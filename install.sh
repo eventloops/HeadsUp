@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Per-user install of Slack Huddle Notifier (macOS/Linux). No sudo required.
+# Per-user install of Heads-Up (macOS/Linux). No sudo required.
 #
 # Publishes the Avalonia head as a self-contained build (no .NET runtime
 # install needed) into ~/Applications/HeadsUp and optionally
 # registers a LaunchAgent so it starts at login (macOS).
 #
-# An existing appsettings.json (your Slack tokens) is preserved on upgrade.
+# Your configuration is preserved on upgrade: appsettings.json and the
+# git-ignored appsettings.Local.json (Slack session, priority users,
+# alert toggles).
 #
 # Usage:
 #   ./install.sh                # install/upgrade
@@ -16,8 +18,11 @@ set -euo pipefail
 APP_NAME="HeadsUp"
 INSTALL_DIR="$HOME/Applications/$APP_NAME"
 EXE="$INSTALL_DIR/HeadsUp.Avalonia"
-PLIST_LABEL="com.procode.slackhuddlenotifier"
+PLIST_LABEL="com.procode.headsup"
 PLIST_PATH="$HOME/Library/LaunchAgents/$PLIST_LABEL.plist"
+# Pre-rename LaunchAgent, migrated/cleaned up on install and uninstall.
+LEGACY_PLIST_LABEL="com.procode.slackhuddlenotifier"
+LEGACY_PLIST_PATH="$HOME/Library/LaunchAgents/$LEGACY_PLIST_LABEL.plist"
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 PROJECT="$REPO_ROOT/HeadsUp.Avalonia/HeadsUp.Avalonia.csproj"
 
@@ -33,10 +38,14 @@ done
 
 if $UNINSTALL; then
     pkill -f "$EXE" 2>/dev/null || true
-    if [[ "$OSTYPE" == darwin* && -f "$PLIST_PATH" ]]; then
-        launchctl unload "$PLIST_PATH" 2>/dev/null || true
-        rm -f "$PLIST_PATH"
-        echo "Removed LaunchAgent."
+    if [[ "$OSTYPE" == darwin* ]]; then
+        for plist in "$PLIST_PATH" "$LEGACY_PLIST_PATH"; do
+            if [[ -f "$plist" ]]; then
+                launchctl unload "$plist" 2>/dev/null || true
+                rm -f "$plist"
+                echo "Removed LaunchAgent $(basename "$plist")."
+            fi
+        done
     fi
     rm -rf "$INSTALL_DIR"
     echo "$APP_NAME uninstalled."
@@ -54,11 +63,17 @@ STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
 dotnet publish "$PROJECT" -c Release -r "$RID" --self-contained -o "$STAGING" -v q -nologo
 
-# Preserve the user's configured tokens across upgrades.
+# Preserve the user's configuration across upgrades - both appsettings.json and the
+# local override holding their Slack session, priority users, and alert settings.
 KEEP_SETTINGS=""
+KEEP_LOCAL_SETTINGS=""
 if [[ -f "$INSTALL_DIR/appsettings.json" ]]; then
     KEEP_SETTINGS="$(cat "$INSTALL_DIR/appsettings.json")"
     echo "Preserving existing appsettings.json."
+fi
+if [[ -f "$INSTALL_DIR/appsettings.Local.json" ]]; then
+    KEEP_LOCAL_SETTINGS="$(cat "$INSTALL_DIR/appsettings.Local.json")"
+    echo "Preserving existing appsettings.Local.json."
 fi
 
 pkill -f "$EXE" 2>/dev/null || true
@@ -69,6 +84,18 @@ chmod +x "$EXE"
 
 if [[ -n "$KEEP_SETTINGS" ]]; then
     printf '%s' "$KEEP_SETTINGS" > "$INSTALL_DIR/appsettings.json"
+fi
+if [[ -n "$KEEP_LOCAL_SETTINGS" ]]; then
+    printf '%s' "$KEEP_LOCAL_SETTINGS" > "$INSTALL_DIR/appsettings.Local.json"
+fi
+
+# Migrate from installs under the old product name: keep their autostart choice,
+# then retire the old-label LaunchAgent.
+if [[ "$OSTYPE" == darwin* && -f "$LEGACY_PLIST_PATH" ]]; then
+    AUTOSTART=true
+    launchctl unload "$LEGACY_PLIST_PATH" 2>/dev/null || true
+    rm -f "$LEGACY_PLIST_PATH"
+    echo "Migrated LaunchAgent from previous install."
 fi
 
 if $AUTOSTART && [[ "$OSTYPE" == darwin* ]]; then
@@ -98,7 +125,8 @@ fi
 
 echo ""
 echo "$APP_NAME installed to $INSTALL_DIR"
-if [[ -z "$KEEP_SETTINGS" ]]; then
-    echo "Next step: edit $INSTALL_DIR/appsettings.json and add your Slack tokens (xapp-/xoxb-)."
+if [[ -z "$KEEP_LOCAL_SETTINGS" ]]; then
+    echo "Next step: add your Slack session (xoxc- token + d cookie) to"
+    echo "  $INSTALL_DIR/appsettings.Local.json  - see the README for how to read both values."
 fi
 echo "Run it with: \"$EXE\""

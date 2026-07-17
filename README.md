@@ -1,14 +1,17 @@
 # Heads-Up
 
-Big, hard-to-miss desktop alerts for the Slack activity you can't afford to miss —
-starting with huddles. Bigger, louder, and harder to miss than Slack's own
-notifications. Runs quietly in the system tray (Windows) or menu bar (macOS/Linux).
+Big, hard-to-miss desktop alerts for the Slack activity you can't afford to miss:
+**huddles**, **@mentions**, **DMs**, and **keyword matches**. Bigger, louder, and
+harder to miss than Slack's own notifications — Slack doesn't even notify you when
+a huddle starts in one of your channels. Runs quietly in the system tray (Windows)
+or menu bar (macOS/Linux).
 
-- A prominent popup showing **who** started the huddle, in **which** channel or DM,
-  with their avatar and a one-click **Join** button
-- A tray **dashboard**: live connection status plus a searchable **priority users**
-  editor — their alerts get extra-prominent, incoming-call styling
-- Optional alert sound; huddles you start yourself are ignored
+- A prominent popup showing **who** and **where** — avatar, channel, a message
+  preview for mentions/DMs/keywords, and a one-click **Join** button for huddles
+- A tray **dashboard**: live connection status, a **"Notify me about"** panel to
+  toggle each alert kind, and a searchable **priority users** editor — their
+  alerts get extra-prominent, incoming-call styling
+- Optional alert sound; your own huddles and messages never alert
 - Runs entirely per-user — **no admin rights** needed to install or run
 
 | Project | Purpose |
@@ -17,8 +20,9 @@ notifications. Runs quietly in the system tray (Windows) or menu bar (macOS/Linu
 | `HeadsUp` | Windows app (WPF) — the primary experience |
 | `HeadsUp.Avalonia` | macOS / Linux app (also runs on Windows) |
 
-> **What it detects today:** huddles. Mentions, DMs, and keyword alerts are on the
-> roadmap and will ride the same pipeline.
+> **What alerts out of the box:** huddles and @mentions. DM and keyword alerts are
+> built in but **off by default** (DMs can be frequent) — flip them on in the
+> dashboard's *Notify me about* panel, no restart needed.
 
 ---
 
@@ -52,7 +56,12 @@ to exactly what they can already see — their channels, DMs, mentions. No sessi
 no impersonating the official client, and the token survives rotation. Per-person setup
 is just that one click; nothing is written up here yet because it's gated on the approval.
 
-Pick the route in `appsettings.json`:
+Both routes share the same detection rules — huddles, mentions, DMs, keywords, and the
+alert toggles behave identically — so switching modes later changes nothing about what
+you're alerted on.
+
+Pick the route in `appsettings.json` (`SlackClientApi` is the shipped default,
+since it's the only route that works today):
 
 ```json
 { "Detection": { "Mode": "SlackClientApi" } }
@@ -72,9 +81,11 @@ cd HeadsUp
 .\install.ps1 -Uninstall   # remove everything
 ```
 
-Installs to `%LocalAppData%\Programs\HeadsUp` with a Start Menu shortcut. Your
-`appsettings.json` is preserved when you re-run the script. Needs the **.NET 8 SDK**
-to build (`winget install Microsoft.DotNet.SDK.8`); the installed app is self-contained.
+Installs to `%LocalAppData%\Programs\HeadsUp` with a Start Menu shortcut. Re-running
+the script upgrades in place and preserves your configuration — both `appsettings.json`
+and `appsettings.Local.json` (your Slack session, priority users, and alert toggles).
+Needs the **.NET 8 SDK** to build (`winget install Microsoft.DotNet.SDK.8`); the
+installed app is self-contained.
 
 <details>
 <summary>"Running scripts is disabled on this system"</summary>
@@ -102,15 +113,17 @@ cd HeadsUp
 ```
 
 Installs to `~/Applications/HeadsUp`; the build RID is auto-detected (Apple Silicon vs
-Intel). Note the embedded sign-in is Windows-only for now — on macOS/Linux use the manual
-credential paste described below.
+Intel). Upgrades preserve your configuration the same way as on Windows. Note the
+embedded sign-in is Windows-only for now — on macOS/Linux use the manual credential
+paste described below.
 
 ---
 
 ## Signing in (client-session prototype)
 
-**Windows (embedded sign-in — recommended).** Set the mode and let the app handle the
-rest:
+**Windows (embedded sign-in — the default).** This is how the Windows app ships, so
+there's nothing to configure — just launch it. Optionally point the sign-in at your
+workspace:
 
 ```json
 {
@@ -164,6 +177,13 @@ Everything is in `appsettings.json` (in the install directory), and changes are 
 
 ```json
 {
+  "Alerts": {
+    "Huddles": true,
+    "Mentions": true,
+    "DirectMessages": false,
+    "Keywords": false,
+    "KeywordList": [ "deploy", "prod down" ]
+  },
   "Notification": {
     "PlaySound": true,
     "SoundFilePath": "",
@@ -175,6 +195,13 @@ Everything is in `appsettings.json` (in the install directory), and changes are 
 }
 ```
 
+- **Alerts ("Notify me about")** — which activity pops an alert. Easiest via the
+  **dashboard**, which saves back here as you toggle. Defaults: huddles and @mentions
+  on; DMs and keywords off. A direct @mention always wins over "it's a DM", which wins
+  over a keyword match — one alert per message, never three.
+- **`KeywordList`** — words or phrases (matched case-insensitively, anywhere in the
+  message) that trigger a keyword alert when `Keywords` is on. Editable as a
+  comma-separated list in the dashboard.
 - **Priority users** — easiest via the **dashboard** (tray → *Open dashboard* → search by
   name → *Add*); it saves back here for you. Priority users get the red header, green join
   button, and incoming-call styling. `Slack:PriorityUsers` also accepts raw user IDs.
@@ -182,18 +209,21 @@ Everything is in `appsettings.json` (in the install directory), and changes are 
   macOS); leave empty for the system default.
 
 Secrets (client token/cookie) live in a git-ignored `appsettings.Local.json` next to the
-app, so they never end up in source control.
+app, so they never end up in source control — dashboard edits (alert toggles, priority
+users) land there too.
 
 ## The dashboard
 
 Right-click (or **double-click**) the tray icon → **Open dashboard**. It shows live status
-— connection, signed-in account, workspace, and detection mode — and the priority-users
-editor. It opens itself automatically the first time you connect.
+— connection, signed-in account, workspace, and detection mode — plus the **"Notify me
+about"** alert toggles (with the keyword list) and the priority-users editor. Everything
+applies immediately. It opens itself automatically the first time you connect.
 
 ## Running in the background
 
 Tray-only: no window opens at launch — look for the headset icon in the system tray
-(Windows) or menu bar (macOS). Popups appear only when a huddle starts; right-click the
+(Windows) or menu bar (macOS). Popups appear only when something alert-worthy happens —
+a huddle starts, or a message matches your mention/DM/keyword settings; right-click the
 icon for the dashboard, About, and exit.
 
 Autostart is opt-in: install with `-Autostart` (Windows) or `--autostart` (macOS) to
@@ -213,3 +243,15 @@ HeadsUp.exe --test-popup --priority   # priority variant
 
 `%LocalAppData%\HeadsUp\logs` (Windows) or `~/.local/share/HeadsUp/logs`
 (macOS/Linux) — rolling daily files, 7 kept.
+
+## Tests
+
+```
+dotnet test
+```
+
+`HeadsUp.Tests` covers the core pipeline (~99% line coverage), including an in-process
+fake Slack server that drives the real WebSocket path end-to-end — auth, connect,
+pushed frames, reconnects. `HeadsUp.Wpf.Tests` covers the dashboard and tray
+view models. UI windows and the WebView2 sign-in flow are exercised manually
+(`--test-popup` helps).

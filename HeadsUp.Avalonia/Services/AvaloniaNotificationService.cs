@@ -18,6 +18,10 @@ public sealed class AvaloniaNotificationService : INotificationService
     private readonly IOptionsMonitor<NotificationOptions> _options;
     private readonly ILogger<AvaloniaNotificationService> _logger;
 
+    // Popups currently on screen, so simultaneous alerts stack instead of overlapping.
+    // Only touched on the UI thread.
+    private readonly List<HuddlePopupWindow> _openPopups = new();
+
     public AvaloniaNotificationService(
         IOptionsMonitor<NotificationOptions> options,
         ILogger<AvaloniaNotificationService> logger)
@@ -47,7 +51,14 @@ public sealed class AvaloniaNotificationService : INotificationService
         var vm = new HuddlePopupViewModel();
         vm.Populate(huddle);
 
-        var window = new HuddlePopupWindow { DataContext = vm };
+        var window = new HuddlePopupWindow
+        {
+            DataContext = vm,
+            // Stack above any popups already showing (12px gap between each).
+            StackOffset = _openPopups.Sum(w => w.Bounds.Height + 12)
+        };
+        _openPopups.Add(window);
+        window.Closed += (_, _) => _openPopups.Remove(window);
         window.SetPriority(huddle.IsPriorityUser);
         window.LoadAvatar(huddle.InitiatorAvatarUrl);
 
@@ -96,8 +107,17 @@ public sealed class AvaloniaNotificationService : INotificationService
             }
             else if (OperatingSystem.IsWindows())
             {
-                // The WPF head is the primary Windows experience; keep a simple chime here.
-                Console.Beep(880, 200);
+                // Same behaviour as the WPF head: custom .wav if configured, else the
+                // system chime. (Console.Beep is unreliable in a windowed app.)
+                if (custom is not null)
+                {
+                    using var player = new System.Media.SoundPlayer(custom);
+                    player.Play();
+                }
+                else
+                {
+                    System.Media.SystemSounds.Exclamation.Play();
+                }
             }
         }
         catch (Exception ex)

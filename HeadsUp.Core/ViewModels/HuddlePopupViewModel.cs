@@ -78,6 +78,16 @@ public sealed partial class HuddlePopupViewModel : ObservableObject
         };
     }
 
+    /// <summary>
+    /// Launches one join target, returning true when it was handed off. Replaceable in
+    /// tests, where opening a real app or browser is not an option.
+    /// </summary>
+    internal Func<string, bool> Launch { get; set; } = target =>
+    {
+        Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+        return true;
+    };
+
     [RelayCommand]
     private void JoinHuddle()
     {
@@ -87,8 +97,8 @@ public sealed partial class HuddlePopupViewModel : ObservableObject
         {
             try
             {
-                Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
-                break;
+                if (Launch(target))
+                    break;
             }
             catch { /* try the next target */ }
         }
@@ -96,7 +106,7 @@ public sealed partial class HuddlePopupViewModel : ObservableObject
     }
 
     /// <summary>Desktop-app deep link first, then the original (web) link as a fallback.</summary>
-    private static IEnumerable<string> JoinTargets(string link)
+    internal static IEnumerable<string> JoinTargets(string link)
     {
         var huddle = Regex.Match(link, @"app\.slack\.com/huddle/(?<team>[^/]+)/(?<channel>[^/?#]+)");
         if (huddle.Success)

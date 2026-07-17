@@ -24,6 +24,7 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
     private readonly ISlackApiClient _apiClient;
     private readonly IOptionsMonitor<SlackOptions> _slackOptions;
     private readonly IOptionsMonitor<DetectionOptions> _detectionOptions;
+    private readonly IOptionsMonitor<AlertOptions> _alertOptions;
     private readonly ILogger<SlackHuddleMonitor> _logger;
 
     // Channel ID -> last time we notified for it, to avoid duplicate events.
@@ -39,12 +40,14 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
         ISlackApiClient apiClient,
         IOptionsMonitor<SlackOptions> slackOptions,
         IOptionsMonitor<DetectionOptions> detectionOptions,
+        IOptionsMonitor<AlertOptions> alertOptions,
         ILogger<SlackHuddleMonitor> logger)
     {
         _socketClient = socketClient;
         _apiClient = apiClient;
         _slackOptions = slackOptions;
         _detectionOptions = detectionOptions;
+        _alertOptions = alertOptions;
         _logger = logger;
     }
 
@@ -92,15 +95,86 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
 
     public async Task Handle(MessageEvent slackEvent)
     {
+        var alerts = _alertOptions.CurrentValue;
+
         // Huddle starts surface as a channel message with subtype "huddle_thread";
         // legacy Slack Calls use "sh_room_created".
-        if (slackEvent.Subtype is not ("huddle_thread" or "sh_room_created"))
+        if (AlertClassifier.IsHuddleSubtype(slackEvent.Subtype))
+        {
+            if (!alerts.Huddles)
+                return;
+
+            _logger.LogDebug("Huddle-related message detected. Channel={Channel} Subtype={Subtype}",
+                slackEvent.Channel, slackEvent.Subtype);
+
+            await RaiseAlertAsync(slackEvent.User, slackEvent.Channel);
+            return;
+        }
+
+        // Only plain user messages (no subtype) are candidates for mention/DM/keyword
+        // alerts - skip edits, deletes, joins, bot posts, etc.
+        if (slackEvent.Subtype is null)
+            await HandleMessageAsync(slackEvent, alerts);
+    }
+
+    private async Task HandleMessageAsync(MessageEvent slackEvent, AlertOptions alerts)
+    {
+        var userId = slackEvent.User;
+        var channelId = slackEvent.Channel;
+        var text = slackEvent.Text ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(channelId))
             return;
 
-        _logger.LogDebug("Huddle-related message detected. Channel={Channel} Subtype={Subtype}",
-            slackEvent.Channel, slackEvent.Subtype);
+        // Never alert on your own messages.
+        if (userId.Equals(_selfUserId, StringComparison.OrdinalIgnoreCase))
+            return;
 
-        await RaiseAlertAsync(slackEvent.User, slackEvent.Channel);
+        if (AlertClassifier.ClassifyMessage(text, channelId, _selfUserId, alerts) is not { } kind)
+            return;
+
+        _logger.LogInformation("{Kind} alert: user={User} channel={Channel}.", kind, userId, channelId);
+
+        try
+        {
+            var (displayName, avatarUrl) = await ResolveUserAsync(userId);
+
+            var isDm = channelId.StartsWith('D');
+            var channelName = channelId;
+            if (!isDm)
+            {
+                try
+                {
+                    var convInfo = await _apiClient.Conversations.Info(channelId);
+                    channelName = FirstNonEmpty(convInfo?.Name) ?? channelId;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Could not resolve channel {Channel}.", channelId);
+                }
+            }
+
+            var isPriority = _slackOptions.CurrentValue.PriorityUsers.Contains(userId, StringComparer.OrdinalIgnoreCase);
+            var link = string.IsNullOrEmpty(_teamId)
+                ? $"slack://channel?id={channelId}"
+                : $"https://app.slack.com/client/{_teamId}/{channelId}";
+
+            AlertRaised?.Invoke(this, new Alert(
+                InitiatorUserId: userId,
+                InitiatorDisplayName: displayName,
+                InitiatorAvatarUrl: avatarUrl,
+                ChannelId: channelId,
+                ChannelName: channelName,
+                IsDirectMessage: isDm,
+                Link: link,
+                IsPriorityUser: isPriority,
+                OccurredAt: DateTimeOffset.Now,
+                Kind: kind,
+                Preview: AlertClassifier.Preview(text)));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error building message alert.");
+        }
     }
 
     private async Task RaiseAlertAsync(string? userId, string? channelId)
