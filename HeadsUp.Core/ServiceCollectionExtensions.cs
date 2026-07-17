@@ -22,6 +22,7 @@ public static class ServiceCollectionExtensions
         services.Configure<SlackOptions>(configuration.GetSection(SlackOptions.SectionName));
         services.Configure<NotificationOptions>(configuration.GetSection(NotificationOptions.SectionName));
         services.Configure<DetectionOptions>(configuration.GetSection(DetectionOptions.SectionName));
+        services.Configure<AlertOptions>(configuration.GetSection(AlertOptions.SectionName));
 
         // Shared live status the tray + dashboard bind to; the detection source updates it.
         var detection = configuration.GetSection(DetectionOptions.SectionName).Get<DetectionOptions>() ?? new();

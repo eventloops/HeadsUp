@@ -7,6 +7,7 @@ using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace HeadsUp.Services;
 
@@ -39,6 +40,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
     private readonly ISlackCredentialProvider _credentials;
     private readonly IOptionsMonitor<SlackOptions> _slackOptions;
     private readonly IOptionsMonitor<DetectionOptions> _detectionOptions;
+    private readonly IOptionsMonitor<AlertOptions> _alertOptions;
     private readonly AppStatus _status;
     private readonly ILogger<SlackWebHuddleSource> _logger;
 
@@ -56,12 +58,14 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
         ISlackCredentialProvider credentials,
         IOptionsMonitor<SlackOptions> slackOptions,
         IOptionsMonitor<DetectionOptions> detectionOptions,
+        IOptionsMonitor<AlertOptions> alertOptions,
         AppStatus status,
         ILogger<SlackWebHuddleSource> logger)
     {
         _credentials = credentials;
         _slackOptions = slackOptions;
         _detectionOptions = detectionOptions;
+        _alertOptions = alertOptions;
         _status = status;
         _logger = logger;
     }
@@ -232,16 +236,28 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
 
         if (type != "message")
             return;
-        if (subtype is not ("huddle_thread" or "sh_room_created"))
-            return;
 
+        var alerts = _alertOptions.CurrentValue;
+
+        if (subtype is "huddle_thread" or "sh_room_created")
+        {
+            if (alerts.Huddles)
+                HandleHuddle(root, subtype);
+            return;
+        }
+
+        // Only plain user messages (no subtype) are candidates for mention/DM/keyword
+        // alerts - skip edits, deletes, joins, bot posts, etc.
+        if (subtype is null)
+            HandleMessage(root, alerts);
+    }
+
+    private void HandleHuddle(JsonElement root, string? subtype)
+    {
         var channel = root.Str("channel");
 
         // A real huddle_thread message is authored by USLACKBOT, so the top-level
         // "user" is never the initiator - the actual starter is room.created_by.
-        // Reading "user" here mislabels every huddle as Slackbot and defeats the
-        // self-filter (own huddles would still pop). Fall back to the top-level
-        // user only for other/legacy shapes that carry no room object.
         var user = root.Obj("room") is { } room ? room.Str("created_by") : null;
         user ??= root.Str("user");
 
@@ -251,8 +267,92 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
             "Huddle signal received over client API: user={User} channel={Channel} subtype={Subtype}.",
             user ?? "?", channel ?? "?", subtype);
 
-        // Resolving names/channel hits the API; don't block the read loop on it.
         _ = RaiseAlertAsync(user, channel);
+    }
+
+    private void HandleMessage(JsonElement root, AlertOptions alerts)
+    {
+        var user = root.Str("user");
+        var channel = root.Str("channel");
+        var text = root.Str("text") ?? string.Empty;
+        if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(channel))
+            return;
+
+        // Never alert on your own messages.
+        if (user.Equals(_selfUserId, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var isMention = _selfUserId is not null &&
+                        text.Contains($"<@{_selfUserId}>", StringComparison.OrdinalIgnoreCase);
+        var isDm = channel.StartsWith('D');
+
+        // Priority: a direct @mention beats "it's a DM" beats a keyword match.
+        AlertKind kind;
+        if (alerts.Mentions && isMention) kind = AlertKind.Mention;
+        else if (alerts.DirectMessages && isDm) kind = AlertKind.DirectMessage;
+        else if (alerts.Keywords && MatchesKeyword(text, alerts.KeywordList)) kind = AlertKind.Keyword;
+        else return;
+
+        _logger.LogInformation("{Kind} alert: user={User} channel={Channel}.", kind, user, channel);
+        _ = RaiseMessageAlertAsync(user, channel, text, kind);
+    }
+
+    private static bool MatchesKeyword(string text, IReadOnlyList<string> keywords)
+    {
+        foreach (var k in keywords)
+            if (!string.IsNullOrWhiteSpace(k) && text.Contains(k, StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
+    }
+
+    private async Task RaiseMessageAlertAsync(string userId, string channelId, string text, AlertKind kind)
+    {
+        try
+        {
+            var (displayName, avatarUrl) = await ResolveUserAsync(userId);
+
+            var isDm = channelId.StartsWith('D');
+            var channelName = channelId;
+            if (!isDm)
+            {
+                try
+                {
+                    var conv = await _client!.ConversationInfoAsync(channelId);
+                    if (conv.Bool("ok") && conv.Obj("channel") is { } ch)
+                        channelName = ch.Str("name") ?? channelId;
+                }
+                catch (Exception ex) { _logger.LogWarning(ex, "Could not resolve channel {Channel}.", channelId); }
+            }
+
+            var isPriority = _slackOptions.CurrentValue.PriorityUsers.Contains(userId, StringComparer.OrdinalIgnoreCase);
+            var link = string.IsNullOrEmpty(_teamId)
+                ? $"slack://channel?id={channelId}"
+                : $"https://app.slack.com/client/{_teamId}/{channelId}";
+
+            AlertRaised?.Invoke(this, new Alert(
+                InitiatorUserId: userId,
+                InitiatorDisplayName: displayName,
+                InitiatorAvatarUrl: avatarUrl,
+                ChannelId: channelId,
+                ChannelName: channelName,
+                IsDirectMessage: isDm,
+                Link: link,
+                IsPriorityUser: isPriority,
+                OccurredAt: DateTimeOffset.Now,
+                Kind: kind,
+                Preview: Preview(text)));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error building message alert.");
+        }
+    }
+
+    /// <summary>Strip Slack's angle-bracket tokens (mentions/links/channels) and clamp length.</summary>
+    private static string Preview(string text)
+    {
+        text = Regex.Replace(text, "<[^>]*>", string.Empty).Replace('\n', ' ').Trim();
+        return text.Length > 140 ? text[..140] + "…" : text;
     }
 
     private async Task KeepAliveAsync(ClientWebSocket ws, CancellationToken ct)

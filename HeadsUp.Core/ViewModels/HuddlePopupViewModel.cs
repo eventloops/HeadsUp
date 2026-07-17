@@ -98,9 +98,14 @@ public sealed partial class HuddlePopupViewModel : ObservableObject
     /// <summary>Desktop-app deep link first, then the original (web) link as a fallback.</summary>
     private static IEnumerable<string> JoinTargets(string link)
     {
-        var m = Regex.Match(link, @"app\.slack\.com/huddle/(?<team>[^/]+)/(?<channel>[^/?#]+)");
-        if (m.Success)
-            yield return $"slack://huddle?team={m.Groups["team"].Value}&id={m.Groups["channel"].Value}";
+        var huddle = Regex.Match(link, @"app\.slack\.com/huddle/(?<team>[^/]+)/(?<channel>[^/?#]+)");
+        if (huddle.Success)
+            yield return $"slack://huddle?team={huddle.Groups["team"].Value}&id={huddle.Groups["channel"].Value}";
+
+        var channel = Regex.Match(link, @"app\.slack\.com/client/(?<team>[^/]+)/(?<channel>[^/?#]+)");
+        if (channel.Success)
+            yield return $"slack://channel?team={channel.Groups["team"].Value}&id={channel.Groups["channel"].Value}";
+
         yield return link;
     }
 
