@@ -2,32 +2,27 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using HeadsUp.Configuration;
+using HeadsUp.Models;
 using HeadsUp.Services;
 using SlackNet.Events;
 using SlackNet.Extensions.DependencyInjection;
 
 namespace HeadsUp;
 
-public static class ServiceCollectionExtensions
+public static class InfrastructureServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the platform-neutral pipeline: options and the notification
-    /// coordinator. The platform head must also register an
-    /// <see cref="IAlertSource"/> (e.g. <see cref="AddSlackApiHuddleDetection"/>)
-    /// and its own <see cref="INotificationService"/>.
+    /// Registers the infrastructure layer: the shared per-source live status (seeded per
+    /// configured connector) and the JSON settings-store adapters. Connectors are added
+    /// separately with <see cref="AddConnector"/>.
     /// </summary>
-    public static IServiceCollection AddHeadsUpCore(
+    public static IServiceCollection AddHeadsUpInfrastructure(
         this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<SlackOptions>(configuration.GetSection(SlackOptions.SectionName));
-        services.Configure<NotificationOptions>(configuration.GetSection(NotificationOptions.SectionName));
-        services.Configure<DetectionOptions>(configuration.GetSection(DetectionOptions.SectionName));
-        services.Configure<AlertOptions>(configuration.GetSection(AlertOptions.SectionName));
-        services.Configure<PriorityOptions>(configuration.GetSection(PriorityOptions.SectionName));
-
         // Shared live status the tray + dashboard bind to; each detection source updates its
         // own SourceStatus entry. Seeded once, per resolved connector, so every configured
-        // source shows a card in a "Starting…" state before it connects.
+        // source shows a card in a "Starting…" state before it connects. (Seeding needs the
+        // connector→source mapping, which is Slack knowledge — hence it lives here.)
         services.AddSingleton(_ =>
         {
             var detection = configuration.GetSection(DetectionOptions.SectionName).Get<DetectionOptions>() ?? new();
@@ -44,28 +39,14 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPrioritySettingsStore, JsonPrioritySettingsStore>();
         services.AddSingleton<IAlertSettingsStore, JsonAlertSettingsStore>();
 
-        // In-memory log of surfaced alerts, shown in the dashboard's "Recent alerts".
-        services.AddSingleton<IAlertHistory, AlertHistory>();
-
-        // Resolves per-connector deep links for opening an alert; connectors contribute
-        // their own IAlertLinkResolver. Falls back to the raw link when none match.
-        services.AddSingleton<AlertLinks>();
-
-        // Snooze / Slack-DND gate. Concrete registered too: the tray drives snooze and the
-        // DND poller feeds it, while the coordinator only reads it through IAlertGate.
-        services.AddSingleton<SnoozeService>();
-        services.AddSingleton<IAlertGate>(sp => sp.GetRequiredService<SnoozeService>());
-
-        services.AddHostedService<HuddleNotificationCoordinator>();
-
         return services;
     }
 
     /// <summary>
     /// Registers the detection source(s) for a connector by its route type. Slack routes
-    /// map to the Socket Mode or client-session source; unknown types are ignored (logged
-    /// by the caller). Platform-specific extras (e.g. the WPF WebView2 credential provider)
-    /// are registered by the head before calling this.
+    /// map to the Socket Mode or client-session source; unknown types are ignored.
+    /// Platform-specific extras (e.g. the WPF WebView2 credential provider) are registered
+    /// by the head before calling this.
     /// </summary>
     public static IServiceCollection AddConnector(
         this IServiceCollection services, IConfiguration configuration, ConnectorOptions connector)
@@ -81,24 +62,25 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>Maps a connector route type to its source identity. Both Slack routes are "slack".</summary>
-    private static (string Id, string Name) ConnectorIdentity(string type)
+    private static (SourceId Id, string Name) ConnectorIdentity(string type)
     {
         if (string.Equals(type, DetectionOptions.SlackClientApi, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(type, DetectionOptions.SlackApi, StringComparison.OrdinalIgnoreCase))
-            return (SlackSource.Id, SlackSource.Name);
+            return (SlackSource.SourceId, SlackSource.Name);
 
         // Future connectors: fall back to the route type as both id and display name.
-        return (type.ToLowerInvariant(), type);
+        return (new SourceId(type), type);
     }
 
     /// <summary>
-    /// Detection via the Slack API: Socket Mode with the user's tokens.
-    /// The huddle monitor doubles as the message event handler, so the
-    /// same singleton instance is resolved for both roles.
+    /// Detection via the Slack API: Socket Mode with the user's tokens. The huddle monitor
+    /// doubles as the message event handler, so the same singleton is resolved for both roles.
     /// </summary>
     public static IServiceCollection AddSlackApiHuddleDetection(
         this IServiceCollection services, IConfiguration configuration)
     {
+        services.Configure<SlackOptions>(configuration.GetSection(SlackOptions.SectionName));
+
         var slackOpts = configuration.GetSection(SlackOptions.SectionName).Get<SlackOptions>() ?? new();
         services.AddSlackNet(c =>
         {
@@ -116,9 +98,8 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Detection via the unofficial Slack client API: an xoxc client token plus
-    /// the "d" session cookie, exactly what a browser/desktop session uses. No
-    /// Slack app and no admin approval required. Prototype - see
+    /// Detection via the unofficial Slack client API: an xoxc client token plus the "d"
+    /// session cookie. No Slack app and no admin approval required. Prototype — see
     /// <see cref="Services.SlackWebHuddleSource"/> for the caveats.
     /// </summary>
     public static IServiceCollection AddSlackClientApiHuddleDetection(

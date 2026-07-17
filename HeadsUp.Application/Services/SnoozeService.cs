@@ -1,3 +1,4 @@
+using HeadsUp.Models;
 using System.Timers;
 using Timer = System.Timers.Timer;
 
@@ -25,7 +26,7 @@ public sealed class SnoozeService : IAlertGate, IDisposable
     private DateTimeOffset? _manualUntil;   // manual snooze end
     // Per-source Do-Not-Disturb: source id -> (display name, end time). A source with no
     // active DND is removed. Keyed so multiple connectors each contribute independently.
-    private readonly Dictionary<string, (string Name, DateTimeOffset Until)> _sourceDnd = new();
+    private readonly Dictionary<SourceId, (string Name, DateTimeOffset Until)> _sourceDnd = new();
 
     public event EventHandler? Changed;
 
@@ -91,7 +92,7 @@ public sealed class SnoozeService : IAlertGate, IDisposable
     /// Records a source's current Do Not Disturb end time (null clears it). Fed by each
     /// connector's DND poller; keyed by <paramref name="sourceId"/> so sources are independent.
     /// </summary>
-    public void SetSourceDnd(string sourceId, string sourceName, DateTimeOffset? until)
+    public void SetSourceDnd(SourceId sourceId, string sourceName, DateTimeOffset? until)
     {
         lock (_gate)
         {

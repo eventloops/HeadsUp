@@ -11,14 +11,15 @@ namespace HeadsUp.Services;
 /// </summary>
 public sealed class AlertLinks
 {
-    private readonly Dictionary<string, IAlertLinkResolver> _bySource;
+    private readonly Dictionary<SourceId, IAlertLinkResolver> _bySource;
 
     public AlertLinks(IEnumerable<IAlertLinkResolver> resolvers) =>
         // Group so two connectors that share a source id (e.g. both Slack routes) don't
-        // collide; the first registered resolver for a source wins.
+        // collide; the first registered resolver for a source wins. (SourceId equality is
+        // already case-insensitive.)
         _bySource = resolvers
-            .GroupBy(r => r.SourceId, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+            .GroupBy(r => r.SourceId)
+            .ToDictionary(g => g.Key, g => g.First());
 
     /// <summary>Preferred deep-link targets for the alert, best first, ending in the raw link.</summary>
     public IReadOnlyList<string> Targets(Alert alert)

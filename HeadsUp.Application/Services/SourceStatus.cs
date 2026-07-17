@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using HeadsUp.Models;
 
 namespace HeadsUp.Services;
 
@@ -11,8 +12,8 @@ namespace HeadsUp.Services;
 /// </summary>
 public sealed partial class SourceStatus : ObservableObject
 {
-    /// <summary>Stable connector id (e.g. "slack"); matches <see cref="IAlertSource.SourceId"/>.</summary>
-    public string SourceId { get; }
+    /// <summary>Stable connector id; matches <see cref="IAlertSource.SourceId"/>.</summary>
+    public SourceId SourceId { get; }
 
     /// <summary>Human-readable connector name (e.g. "Slack").</summary>
     [ObservableProperty]
@@ -46,7 +47,7 @@ public sealed partial class SourceStatus : ObservableObject
     [ObservableProperty]
     private bool _needsSignIn;
 
-    public SourceStatus(string sourceId, string displayName)
+    public SourceStatus(SourceId sourceId, string displayName)
     {
         SourceId = sourceId;
         _displayName = displayName;

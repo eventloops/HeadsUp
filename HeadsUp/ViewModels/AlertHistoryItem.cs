@@ -35,9 +35,9 @@ public sealed class AlertHistoryItem
     public string TimeDisplay { get; }
     public bool IsPriorityUser { get; }
     public bool CanMute { get; }
-    public string ChannelId => Alert.ChannelId;
+    public string ChannelId => Alert.ChannelId.Value;
     public string ChannelName => Alert.ChannelName;
-    public string SourceId => Alert.SourceId;
+    public string SourceId => Alert.SourceId.Value;
 
     /// <summary>Relative time for recent items ("2m ago"), a clock time for older ones.</summary>
     private static string FormatTime(DateTimeOffset when)

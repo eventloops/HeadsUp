@@ -7,15 +7,17 @@ namespace HeadsUp.Tests;
 public class AlertHistoryTests
 {
     private static Alert Make(string channel = "C1") => new(
-        InitiatorUserId: "U1",
+        InitiatorUserId: new UserId("U1"),
         InitiatorDisplayName: "Sarah",
         InitiatorAvatarUrl: null,
-        ChannelId: channel,
+        ChannelId: new ChannelId(channel),
         ChannelName: channel,
         IsDirectMessage: false,
         Link: "https://example",
         IsPriorityUser: false,
-        OccurredAt: DateTimeOffset.Now);
+        OccurredAt: DateTimeOffset.Now,
+        SourceId: new SourceId("slack"),
+        SourceName: "Slack");
 
     [Fact]
     public void Starts_empty()
@@ -45,8 +47,8 @@ public class AlertHistoryTests
 
         var recent = history.Recent;
         Assert.Equal(AlertHistory.Capacity, recent.Count);
-        Assert.Equal($"C{AlertHistory.Capacity + 24}", recent[0].ChannelId);   // newest kept
-        Assert.Equal($"C{25}", recent[^1].ChannelId);                          // oldest survivor
+        Assert.Equal($"C{AlertHistory.Capacity + 24}", recent[0].ChannelId.Value);   // newest kept
+        Assert.Equal($"C{25}", recent[^1].ChannelId.Value);                          // oldest survivor
     }
 
     [Fact]

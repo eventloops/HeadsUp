@@ -17,19 +17,19 @@ public class HuddlePopupViewModelTests
         AlertKind kind = AlertKind.Huddle,
         string preview = "") =>
         new(
-            InitiatorUserId: "U000TEST",
+            InitiatorUserId: new UserId("U000TEST"),
             InitiatorDisplayName: displayName,
             InitiatorAvatarUrl: null,
-            ChannelId: isDm ? "D000TEST" : "C000TEST",
+            ChannelId: new ChannelId(isDm ? "D000TEST" : "C000TEST"),
             ChannelName: channelName,
             IsDirectMessage: isDm,
             Link: "https://app.slack.com/huddle/T000TEST/C000TEST",
             IsPriorityUser: isPriority,
             OccurredAt: DateTimeOffset.Now,
+            SourceId: new SourceId("slack"),
+            SourceName: "Slack",
             Kind: kind,
-            Preview: preview,
-            SourceId: "slack",
-            SourceName: "Slack");
+            Preview: preview);
 
     private static HuddlePopupViewModel Populated(Alert alert)
     {

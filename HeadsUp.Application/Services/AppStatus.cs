@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using HeadsUp.Models;
 
 namespace HeadsUp.Services;
 
@@ -25,7 +26,7 @@ public sealed partial class AppStatus : ObservableObject
     /// Returns the status for <paramref name="sourceId"/>, creating and adding it if absent.
     /// Prefer seeding sources at startup (see <see cref="Seed"/>) so this only reads.
     /// </summary>
-    public SourceStatus GetOrAdd(string sourceId, string displayName)
+    public SourceStatus GetOrAdd(SourceId sourceId, string displayName)
     {
         var existing = Sources.FirstOrDefault(s => s.SourceId == sourceId);
         if (existing is not null)
@@ -40,7 +41,7 @@ public sealed partial class AppStatus : ObservableObject
 
     /// <summary>Pre-registers a source (at startup) with its initial mode, so its card
     /// shows immediately in a "Starting…" state before it connects.</summary>
-    public SourceStatus Seed(string sourceId, string displayName, string mode)
+    public SourceStatus Seed(SourceId sourceId, string displayName, string mode)
     {
         var status = GetOrAdd(sourceId, displayName);
         status.Mode = mode;

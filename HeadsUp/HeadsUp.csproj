@@ -20,7 +20,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\HeadsUp.Core\HeadsUp.Core.csproj" />
+    <ProjectReference Include="..\HeadsUp.Domain\HeadsUp.Domain.csproj" />
+    <ProjectReference Include="..\HeadsUp.Application\HeadsUp.Application.csproj" />
+    <ProjectReference Include="..\HeadsUp.Infrastructure\HeadsUp.Infrastructure.csproj" />
+    <ProjectReference Include="..\HeadsUp.Presentation\HeadsUp.Presentation.csproj" />
   </ItemGroup>
 
   <ItemGroup>

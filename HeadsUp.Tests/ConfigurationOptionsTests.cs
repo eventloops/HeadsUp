@@ -1,4 +1,5 @@
 using HeadsUp.Configuration;
+using HeadsUp.Models;
 using Xunit;
 
 namespace HeadsUp.Tests;
@@ -112,9 +113,9 @@ public class ConfigurationOptionsTests
     {
         var options = new PriorityOptions { Users = { new PriorityUser { Source = "slack", Id = "U1" } } };
 
-        Assert.True(options.IsPriority("SLACK", "u1"));
-        Assert.False(options.IsPriority("teams", "U1")); // same id, different source
-        Assert.False(options.IsPriority("slack", "U2"));
+        Assert.True(options.IsPriority(new SourceId("SLACK"), new UserId("u1")));
+        Assert.False(options.IsPriority(new SourceId("teams"), new UserId("U1"))); // same id, different source
+        Assert.False(options.IsPriority(new SourceId("slack"), new UserId("U2")));
     }
 
     [Fact]

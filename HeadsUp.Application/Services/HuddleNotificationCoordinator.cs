@@ -39,8 +39,7 @@ public sealed class HuddleNotificationCoordinator : BackgroundService
     {
         foreach (var source in _sources)
         {
-            // Capture the source so the alert can be stamped with its identity.
-            EventHandler<Alert> handler = (_, alert) => OnAlertRaised(source, alert);
+            EventHandler<Alert> handler = (_, alert) => OnAlertRaised(alert);
             source.AlertRaised += handler;
             _handlers.Add((source, handler));
         }
@@ -60,11 +59,9 @@ public sealed class HuddleNotificationCoordinator : BackgroundService
                    }, TaskScheduler.Default);
     }
 
-    private void OnAlertRaised(IAlertSource source, Alert raised)
+    private void OnAlertRaised(Alert e)
     {
-        // Stamp the connector identity so history, deep links and status can tell sources apart.
-        var e = raised with { SourceId = source.SourceId, SourceName = source.SourceName };
-
+        // The raising source already stamped its identity on the alert.
         // Log it to history first so the dashboard reflects it even if the popup is missed.
         _history.Record(e);
 

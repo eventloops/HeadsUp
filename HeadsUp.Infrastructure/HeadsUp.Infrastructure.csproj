@@ -5,12 +5,15 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>12</LangVersion>
-    <!-- Keep the original namespaces so platform heads don't churn. -->
     <RootNamespace>HeadsUp</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <ProjectReference Include="..\HeadsUp.Domain\HeadsUp.Domain.csproj" />
+    <ProjectReference Include="..\HeadsUp.Application\HeadsUp.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
     <PackageReference Include="SlackNet" Version="0.17.10" />
     <PackageReference Include="SlackNet.Extensions.DependencyInjection" Version="0.17.10" />

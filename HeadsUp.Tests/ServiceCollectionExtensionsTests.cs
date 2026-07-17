@@ -22,7 +22,8 @@ public class ServiceCollectionExtensionsTests
         services.AddLogging();
         services.AddSingleton<INotificationService, RecordingNotificationService>();
         beforeCore?.Invoke(services);
-        services.AddHeadsUpCore(config);
+        services.AddHeadsUpApplication(config);
+        services.AddHeadsUpInfrastructure(config);
         services.AddSlackClientApiHuddleDetection(config);
         return services.BuildServiceProvider();
     }
@@ -85,7 +86,8 @@ public class ServiceCollectionExtensionsTests
             ("Detection:Connectors:0:Type", "SlackApi"),
             ("Slack:AppToken", "xapp-1"),
             ("Slack:UserToken", "xoxp-1"));
-        services.AddHeadsUpCore(config);
+        services.AddHeadsUpApplication(config);
+        services.AddHeadsUpInfrastructure(config);
         services.AddSlackApiHuddleDetection(config);
         using var provider = services.BuildServiceProvider();
 

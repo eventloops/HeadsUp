@@ -11,19 +11,17 @@ public enum AlertKind
 
 /// <summary>A detected piece of activity worth surfacing as a prominent alert.</summary>
 public sealed record Alert(
-    string InitiatorUserId,
+    UserId InitiatorUserId,
     string InitiatorDisplayName,
     string? InitiatorAvatarUrl,
-    string ChannelId,
+    ChannelId ChannelId,
     string ChannelName,
     bool IsDirectMessage,
     string Link,
     bool IsPriorityUser,
     DateTimeOffset OccurredAt,
+    // Which connector produced this alert — stamped by the raising IAlertSource.
+    SourceId SourceId,
+    string SourceName,
     AlertKind Kind = AlertKind.Huddle,
-    string Preview = "",
-    // Which connector produced this alert. Stamped by the coordinator on relay from
-    // the raising IAlertSource, so sources don't each set it; empty for a bare alert
-    // built outside the pipeline (e.g. a --test-popup preview).
-    string SourceId = "",
-    string SourceName = "");
+    string Preview = "");

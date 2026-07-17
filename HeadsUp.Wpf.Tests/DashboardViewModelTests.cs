@@ -73,18 +73,18 @@ public class DashboardViewModelTests
         new(id, name, real, null);
 
     private static Alert Alert(string channel = "general", bool dm = false, AlertKind kind = AlertKind.Huddle) => new(
-        InitiatorUserId: "U1",
+        InitiatorUserId: new UserId("U1"),
         InitiatorDisplayName: "Sarah Whitfield",
         InitiatorAvatarUrl: null,
-        ChannelId: dm ? "D1" : "C1",
+        ChannelId: new ChannelId(dm ? "D1" : "C1"),
         ChannelName: channel,
         IsDirectMessage: dm,
         Link: "https://app.slack.com/huddle/T1/C1",
         IsPriorityUser: false,
         OccurredAt: DateTimeOffset.Now,
-        Kind: kind,
-        SourceId: "slack",
-        SourceName: "Slack");
+        SourceId: new SourceId("slack"),
+        SourceName: "Slack",
+        Kind: kind);
 
     private DashboardViewModel CreateVm() =>
         new(_status, _directory, _priorityStore, _alertStore, _history, _snooze, _links);

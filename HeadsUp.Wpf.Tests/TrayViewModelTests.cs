@@ -1,3 +1,4 @@
+using HeadsUp.Models;
 using HeadsUp.Services;
 using HeadsUp.ViewModels;
 using Xunit;
@@ -55,7 +56,7 @@ public class TrayViewModelTests
         var snooze = new SnoozeService();
         var vm = new TrayViewModel(new AppStatus(), snooze);
 
-        snooze.SetSourceDnd("slack", "Slack", DateTimeOffset.Now.AddHours(1));
+        snooze.SetSourceDnd(new SourceId("slack"), "Slack", DateTimeOffset.Now.AddHours(1));
 
         Assert.True(vm.IsMuted);
         Assert.False(vm.IsManuallySnoozed); // can't "resume" Slack DND from the tray

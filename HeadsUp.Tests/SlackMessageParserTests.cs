@@ -7,6 +7,15 @@ public class SlackMessageParserTests
 {
     private const string SelfId = "U111SELF";
 
+    [Theory]
+    [InlineData("huddle_thread", true)]
+    [InlineData("sh_room_created", true)]
+    [InlineData("channel_join", false)]
+    [InlineData("message_changed", false)]
+    [InlineData(null, false)]
+    public void IsHuddleSubtype_matches_only_huddle_signals(string? subtype, bool expected) =>
+        Assert.Equal(expected, SlackMessageParser.IsHuddleSubtype(subtype));
+
     [Fact]
     public void IsMention_matches_the_self_token_case_insensitively()
     {

@@ -59,7 +59,8 @@ public partial class App : Application
             })
             .ConfigureServices((ctx, services) =>
             {
-                services.AddHeadsUpCore(ctx.Configuration);
+                services.AddHeadsUpApplication(ctx.Configuration);
+                services.AddHeadsUpInfrastructure(ctx.Configuration);
 
                 // Detection sources: each configured connector runs side by side (legacy
                 // single-Mode configs resolve to one connector).
@@ -95,15 +96,17 @@ public partial class App : Application
     {
         var notifier = _host?.Services.GetRequiredService<INotificationService>();
         _ = notifier?.ShowAlertAsync(new Alert(
-            InitiatorUserId: "U000TEST",
+            InitiatorUserId: new UserId("U000TEST"),
             InitiatorDisplayName: "Sarah Whitfield",
             InitiatorAvatarUrl: null,
-            ChannelId: "C000TEST",
+            ChannelId: new ChannelId("C000TEST"),
             ChannelName: "project-atlas",
             IsDirectMessage: false,
             Link: "https://slack.com",
             IsPriorityUser: priority,
-            OccurredAt: DateTimeOffset.Now));
+            OccurredAt: DateTimeOffset.Now,
+            SourceId: SlackSource.SourceId,
+            SourceName: SlackSource.Name));
     }
 
     private void SetStatus(string text)

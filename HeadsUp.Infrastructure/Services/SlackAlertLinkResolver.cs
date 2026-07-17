@@ -10,7 +10,7 @@ namespace HeadsUp.Services;
 /// </summary>
 public sealed class SlackAlertLinkResolver : IAlertLinkResolver
 {
-    public string SourceId => SlackSource.Id;
+    public SourceId SourceId => SlackSource.SourceId;
 
     public IEnumerable<string> Targets(Alert alert)
     {

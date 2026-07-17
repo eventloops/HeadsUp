@@ -12,13 +12,17 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.2" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="NetArchTest.Rules" Version="1.3.2" />
     <PackageReference Include="NSubstitute" Version="5.1.0" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\HeadsUp.Core\HeadsUp.Core.csproj" />
+    <ProjectReference Include="..\HeadsUp.Domain\HeadsUp.Domain.csproj" />
+    <ProjectReference Include="..\HeadsUp.Application\HeadsUp.Application.csproj" />
+    <ProjectReference Include="..\HeadsUp.Infrastructure\HeadsUp.Infrastructure.csproj" />
+    <ProjectReference Include="..\HeadsUp.Presentation\HeadsUp.Presentation.csproj" />
   </ItemGroup>
 
 </Project>

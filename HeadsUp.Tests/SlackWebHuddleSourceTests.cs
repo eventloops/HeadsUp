@@ -79,7 +79,7 @@ public class SlackWebHuddleSourceFrameTests
             """);
 
         var alert = await waiter.Alert;
-        Assert.Equal("U2", alert.InitiatorUserId);
+        Assert.Equal("U2", alert.InitiatorUserId.Value);
         Assert.Equal(AlertKind.Huddle, alert.Kind);
         Assert.Equal("U2", alert.InitiatorDisplayName); // no API client -> id fallback
         Assert.Equal("https://app.slack.com/huddle/T123/C1", alert.Link);
@@ -95,7 +95,7 @@ public class SlackWebHuddleSourceFrameTests
             { "type": "message", "subtype": "sh_room_created", "channel": "C1", "user": "U7" }
             """);
 
-        Assert.Equal("U7", (await waiter.Alert).InitiatorUserId);
+        Assert.Equal("U7", (await waiter.Alert).InitiatorUserId.Value);
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public class SlackWebHuddleSourceFrameTests
             { "type": "message", "subtype": "huddle_thread", "channel": "C1", "room": { "created_by": "{{SelfId}}" } }
             """);
 
-        Assert.Equal(SelfId, (await waiter.Alert).InitiatorUserId);
+        Assert.Equal(SelfId, (await waiter.Alert).InitiatorUserId.Value);
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public class SlackWebHuddleSourceFrameTests
 
         await Task.Delay(200);
         Assert.Equal(2, alerts.Count);
-        Assert.Equal(new[] { "C1", "C2" }, alerts.Select(a => a.ChannelId));
+        Assert.Equal(new[] { "C1", "C2" }, alerts.Select(a => a.ChannelId.Value));
     }
 
     [Fact]
@@ -365,7 +365,7 @@ public class SlackWebHuddleSourceIntegrationTests
                 """);
 
             var alert = await waiter.Alert;
-            Assert.Equal("U2", alert.InitiatorUserId);
+            Assert.Equal("U2", alert.InitiatorUserId.Value);
             Assert.Equal("Sarah Whitfield", alert.InitiatorDisplayName);      // via /api/users.info
             Assert.Equal("https://img/72.png", alert.InitiatorAvatarUrl);
             Assert.Equal("general", alert.ChannelName);                       // via /api/conversations.info
@@ -407,7 +407,7 @@ public class SlackWebHuddleSourceIntegrationTests
                 await Task.Delay(25);
 
             var alert = Assert.Single(alerts); // CPRIVATE never surfaced
-            Assert.Equal("C1", alert.ChannelId);
+            Assert.Equal("C1", alert.ChannelId.Value);
             Assert.Equal("UNKNOWN1", alert.InitiatorDisplayName);
             Assert.Null(alert.InitiatorAvatarUrl);
         }

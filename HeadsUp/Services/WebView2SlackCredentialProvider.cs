@@ -100,7 +100,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
     public string SourceDescription => "WebView2 Slack session";
 
     /// <summary>The Slack source's status entry — this provider only ever drives Slack.</summary>
-    private SourceStatus SlackStatus => _status.GetOrAdd(SlackSource.Id, SlackSource.Name);
+    private SourceStatus SlackStatus => _status.GetOrAdd(SlackSource.SourceId, SlackSource.Name);
 
     public async Task<SlackCredentials?> GetCredentialsAsync(bool forceRefresh, CancellationToken ct)
     {

@@ -11,6 +11,13 @@ namespace HeadsUp.Services;
 /// </summary>
 public static class SlackMessageParser
 {
+    /// <summary>
+    /// True for message subtypes that signal a huddle start: "huddle_thread" for huddles,
+    /// "sh_room_created" for legacy Slack Calls. Slack wire-format knowledge.
+    /// </summary>
+    public static bool IsHuddleSubtype(string? subtype) =>
+        subtype is "huddle_thread" or "sh_room_created";
+
     /// <summary>True when the text directly @-mentions the given user (Slack's <c>&lt;@id&gt;</c> token).</summary>
     public static bool IsMention(string text, string? selfUserId) =>
         selfUserId is not null &&
@@ -26,6 +33,6 @@ public static class SlackMessageParser
     public static string Preview(string text)
     {
         text = Regex.Replace(text, "<[^>]*>", string.Empty);
-        return AlertClassifier.Truncate(text);
+        return AlertPolicy.Truncate(text);
     }
 }

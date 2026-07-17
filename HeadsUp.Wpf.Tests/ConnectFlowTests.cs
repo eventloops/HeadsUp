@@ -1,4 +1,5 @@
 using HeadsUp.Configuration;
+using HeadsUp.Models;
 using HeadsUp.Services;
 using HeadsUp.ViewModels;
 using Xunit;
@@ -65,7 +66,7 @@ public class WelcomeViewModelTests
     private readonly AppStatus _status = new();
     private readonly SourceStatus _slack;
 
-    public WelcomeViewModelTests() => _slack = _status.Seed("slack", "Slack", "SlackClientApi");
+    public WelcomeViewModelTests() => _slack = _status.Seed(new SourceId("slack"), "Slack", "SlackClientApi");
 
     private WelcomeViewModel Create() => new(_store, _status);
 

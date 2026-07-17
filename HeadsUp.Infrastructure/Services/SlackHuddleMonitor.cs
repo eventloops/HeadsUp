@@ -35,7 +35,7 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
     private string? _teamId;
     private string? _selfUserId;
 
-    public string SourceId => SlackSource.Id;
+    public SourceId SourceId => SlackSource.SourceId;
     public string SourceName => SlackSource.Name;
 
     /// <summary>This source's own status entry (created on first use if not pre-seeded).</summary>
@@ -115,12 +115,14 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
     public async Task Handle(MessageEvent slackEvent)
     {
         var alerts = _alertOptions.CurrentValue;
+        var prefs = alerts.ToPreferences();
 
         // Huddle starts surface as a channel message with subtype "huddle_thread";
         // legacy Slack Calls use "sh_room_created".
-        if (AlertClassifier.IsHuddleSubtype(slackEvent.Subtype))
+        if (SlackMessageParser.IsHuddleSubtype(slackEvent.Subtype))
         {
-            if (!alerts.Huddles || AlertClassifier.IsChannelMuted(slackEvent.Channel ?? string.Empty, SourceId, alerts))
+            if (!alerts.Huddles ||
+                AlertPolicy.IsChannelMuted(new ChannelId(slackEvent.Channel ?? string.Empty), SourceId, prefs.Muted))
                 return;
 
             _logger.LogDebug("Huddle-related message detected. Channel={Channel} Subtype={Subtype}",
@@ -133,10 +135,10 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
         // Only plain user messages (no subtype) are candidates for mention/DM/keyword
         // alerts - skip edits, deletes, joins, bot posts, etc.
         if (slackEvent.Subtype is null)
-            await HandleMessageAsync(slackEvent, alerts);
+            await HandleMessageAsync(slackEvent, prefs);
     }
 
-    private async Task HandleMessageAsync(MessageEvent slackEvent, AlertOptions alerts)
+    private async Task HandleMessageAsync(MessageEvent slackEvent, AlertPreferences prefs)
     {
         var userId = slackEvent.User;
         var channelId = slackEvent.Channel;
@@ -150,7 +152,7 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
 
         var isMention = SlackMessageParser.IsMention(text, _selfUserId);
         var isDm = SlackMessageParser.IsDirectMessage(channelId);
-        if (AlertClassifier.Classify(isMention, isDm, text, channelId, SourceId, alerts) is not { } kind)
+        if (AlertPolicy.Classify(isMention, isDm, text, new ChannelId(channelId), SourceId, prefs) is not { } kind)
             return;
 
         _logger.LogInformation("{Kind} alert: user={User} channel={Channel}.", kind, userId, channelId);
@@ -173,21 +175,23 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
                 }
             }
 
-            var isPriority = _priorityOptions.CurrentValue.IsPriority(SourceId, userId);
+            var isPriority = _priorityOptions.CurrentValue.IsPriority(SourceId, new UserId(userId));
             var link = string.IsNullOrEmpty(_teamId)
                 ? $"slack://channel?id={channelId}"
                 : $"https://app.slack.com/client/{_teamId}/{channelId}";
 
             AlertRaised?.Invoke(this, new Alert(
-                InitiatorUserId: userId,
+                InitiatorUserId: new UserId(userId),
                 InitiatorDisplayName: displayName,
                 InitiatorAvatarUrl: avatarUrl,
-                ChannelId: channelId,
+                ChannelId: new ChannelId(channelId),
                 ChannelName: channelName,
                 IsDirectMessage: isDm,
                 Link: link,
                 IsPriorityUser: isPriority,
                 OccurredAt: DateTimeOffset.Now,
+                SourceId: SourceId,
+                SourceName: SourceName,
                 Kind: kind,
                 Preview: SlackMessageParser.Preview(text)));
         }
@@ -250,7 +254,7 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
             }
 
             var (displayName, avatarUrl) = await ResolveUserAsync(userId);
-            var isPriority = _priorityOptions.CurrentValue.IsPriority(SourceId, userId);
+            var isPriority = _priorityOptions.CurrentValue.IsPriority(SourceId, new UserId(userId));
 
             // With a team id Slack can deep-link straight into the huddle;
             // otherwise fall back to opening the channel.
@@ -259,15 +263,17 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
                 : $"https://app.slack.com/huddle/{_teamId}/{channelId}";
 
             var huddleEvent = new Alert(
-                InitiatorUserId: userId,
+                InitiatorUserId: new UserId(userId),
                 InitiatorDisplayName: displayName,
                 InitiatorAvatarUrl: avatarUrl,
-                ChannelId: channelId,
+                ChannelId: new ChannelId(channelId),
                 ChannelName: channelName,
                 IsDirectMessage: isDm,
                 Link: huddleLink,
                 IsPriorityUser: isPriority,
-                OccurredAt: now);
+                OccurredAt: now,
+                SourceId: SourceId,
+                SourceName: SourceName);
 
             _logger.LogInformation(
                 "Huddle started by {User} in {Channel}{Priority}.",

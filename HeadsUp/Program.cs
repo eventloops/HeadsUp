@@ -67,8 +67,9 @@ internal static class Program
             })
             .ConfigureServices((ctx, services) =>
             {
-                // Platform-neutral pipeline (options, coordinator).
-                services.AddHeadsUpCore(ctx.Configuration);
+                // Application pipeline (options, coordinator) + infrastructure (status, stores).
+                services.AddHeadsUpApplication(ctx.Configuration);
+                services.AddHeadsUpInfrastructure(ctx.Configuration);
 
                 // Detection sources: each configured connector runs side by side (legacy
                 // single-Mode configs resolve to one connector).

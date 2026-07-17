@@ -138,7 +138,7 @@ public class SlackHuddleMonitorTests
 
         var alert = await waiter.Alert;
         Assert.Equal(AlertKind.Huddle, alert.Kind);
-        Assert.Equal("U2", alert.InitiatorUserId);
+        Assert.Equal("U2", alert.InitiatorUserId.Value);
         Assert.Equal("Sarah Whitfield", alert.InitiatorDisplayName);
         Assert.Equal("https://img/72.png", alert.InitiatorAvatarUrl);
         Assert.Equal("general", alert.ChannelName);
@@ -203,7 +203,7 @@ public class SlackHuddleMonitorTests
 
         await monitor.Handle(Huddle(SelfId, "C1"));
 
-        Assert.Equal(SelfId, (await waiter.Alert).InitiatorUserId);
+        Assert.Equal(SelfId, (await waiter.Alert).InitiatorUserId.Value);
     }
 
     [Fact]

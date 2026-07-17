@@ -1,3 +1,4 @@
+using HeadsUp.Models;
 using HeadsUp.Services;
 using Xunit;
 
@@ -22,8 +23,8 @@ public class AppStatusTests
     public void GetOrAdd_is_idempotent_per_source()
     {
         var status = new AppStatus();
-        var a = status.GetOrAdd("slack", "Slack");
-        var b = status.GetOrAdd("slack", "Slack");
+        var a = status.GetOrAdd(new SourceId("slack"), "Slack");
+        var b = status.GetOrAdd(new SourceId("slack"), "Slack");
 
         Assert.Same(a, b);
         Assert.Single(status.Sources);
@@ -33,7 +34,7 @@ public class AppStatusTests
     public void Seed_registers_a_source_with_its_mode_in_a_starting_state()
     {
         var status = new AppStatus();
-        var slack = status.Seed("slack", "Slack", "SlackClientApi");
+        var slack = status.Seed(new SourceId("slack"), "Slack", "SlackClientApi");
 
         Assert.Equal("SlackClientApi", slack.Mode);
         Assert.False(slack.IsConnected);
@@ -44,7 +45,7 @@ public class AppStatusTests
     public void A_source_connecting_rolls_up_to_the_aggregate_and_notifies()
     {
         var status = new AppStatus();
-        var slack = status.Seed("slack", "Slack", "SlackClientApi");
+        var slack = status.Seed(new SourceId("slack"), "Slack", "SlackClientApi");
 
         var changed = new List<string?>();
         status.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
@@ -65,8 +66,8 @@ public class AppStatusTests
     public void StatusMessage_summarizes_when_multiple_sources_are_present()
     {
         var status = new AppStatus();
-        var slack = status.Seed("slack", "Slack", "SlackClientApi");
-        status.Seed("teams", "Teams", "GraphApi");
+        var slack = status.Seed(new SourceId("slack"), "Slack", "SlackClientApi");
+        status.Seed(new SourceId("teams"), "Teams", "GraphApi");
 
         slack.SetConnection(true, "Watching for huddles");
 
@@ -78,7 +79,7 @@ public class AppStatusTests
     public void NeedsSignIn_is_true_when_any_source_needs_sign_in()
     {
         var status = new AppStatus();
-        var slack = status.Seed("slack", "Slack", "SlackClientApi");
+        var slack = status.Seed(new SourceId("slack"), "Slack", "SlackClientApi");
         Assert.False(status.NeedsSignIn);
 
         slack.NeedsSignIn = true;
@@ -91,7 +92,7 @@ public class SourceStatusTests
     [Fact]
     public void SetConnection_updates_both_properties_and_notifies()
     {
-        var status = new SourceStatus("slack", "Slack");
+        var status = new SourceStatus(new SourceId("slack"), "Slack");
         var changed = new List<string?>();
         status.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
 
@@ -106,7 +107,7 @@ public class SourceStatusTests
     [Fact]
     public void SetAccount_records_the_identity()
     {
-        var status = new SourceStatus("slack", "Slack");
+        var status = new SourceStatus(new SourceId("slack"), "Slack");
         status.SetAccount("cameron.lambert", "Procode");
 
         Assert.Equal("cameron.lambert", status.Account);
@@ -116,7 +117,7 @@ public class SourceStatusTests
     [Fact]
     public void Unchanged_values_do_not_notify()
     {
-        var status = new SourceStatus("slack", "Slack");
+        var status = new SourceStatus(new SourceId("slack"), "Slack");
         status.SetConnection(true, "up");
 
         var changed = new List<string?>();

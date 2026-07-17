@@ -17,11 +17,11 @@ internal sealed class FakeAlertSource : IAlertSource
 {
     public FakeAlertSource(string sourceId = "test", string sourceName = "Test")
     {
-        SourceId = sourceId;
+        SourceId = new SourceId(sourceId);
         SourceName = sourceName;
     }
 
-    public string SourceId { get; }
+    public SourceId SourceId { get; }
     public string SourceName { get; }
     public event EventHandler<Alert>? AlertRaised;
     public void Raise(Alert alert) => AlertRaised?.Invoke(this, alert);

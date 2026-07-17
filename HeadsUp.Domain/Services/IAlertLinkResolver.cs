@@ -12,7 +12,7 @@ namespace HeadsUp.Services;
 public interface IAlertLinkResolver
 {
     /// <summary>The connector this resolver handles, matched against <see cref="Alert.SourceId"/>.</summary>
-    string SourceId { get; }
+    SourceId SourceId { get; }
 
     /// <summary>Preferred launch targets for the alert, best first. May be empty.</summary>
     IEnumerable<string> Targets(Alert alert);

@@ -1,3 +1,5 @@
+using HeadsUp.Models;
+
 namespace HeadsUp.Services;
 
 /// <summary>
@@ -10,4 +12,7 @@ public static class SlackSource
 {
     public const string Id = "slack";
     public const string Name = "Slack";
+
+    /// <summary>The connector identity as a value object.</summary>
+    public static readonly SourceId SourceId = new(Id);
 }

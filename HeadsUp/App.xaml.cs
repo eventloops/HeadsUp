@@ -77,15 +77,17 @@ public partial class App : Application
             {
                 var notifier = _host.Services.GetRequiredService<INotificationService>();
                 _ = notifier.ShowAlertAsync(new Alert(
-                    InitiatorUserId: "U000TEST",
+                    InitiatorUserId: new UserId("U000TEST"),
                     InitiatorDisplayName: "Sarah Whitfield",
                     InitiatorAvatarUrl: null,
-                    ChannelId: "C000TEST",
+                    ChannelId: new ChannelId("C000TEST"),
                     ChannelName: "project-atlas",
                     IsDirectMessage: false,
                     Link: "https://app.slack.com/huddle/T000TEST/C000TEST",
                     IsPriorityUser: e.Args.Contains("--priority"),
-                    OccurredAt: DateTimeOffset.Now));
+                    OccurredAt: DateTimeOffset.Now,
+                    SourceId: SlackSource.SourceId,
+                    SourceName: SlackSource.Name));
             }
         }
         catch (Exception ex)

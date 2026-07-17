@@ -7,16 +7,18 @@ namespace HeadsUp.Tests;
 
 public class HuddleNotificationCoordinatorTests
 {
-    private static Alert SomeAlert() => new(
-        InitiatorUserId: "U1",
+    private static Alert SomeAlert(string source = "slack", string sourceName = "Slack") => new(
+        InitiatorUserId: new UserId("U1"),
         InitiatorDisplayName: "Sarah",
         InitiatorAvatarUrl: null,
-        ChannelId: "C1",
+        ChannelId: new ChannelId("C1"),
         ChannelName: "general",
         IsDirectMessage: false,
         Link: "https://example",
         IsPriorityUser: false,
-        OccurredAt: DateTimeOffset.Now);
+        OccurredAt: DateTimeOffset.Now,
+        SourceId: new SourceId(source),
+        SourceName: sourceName);
 
     private readonly FakeAlertSource _source = new("slack", "Slack");
     private readonly RecordingNotificationService _notifications = new();
@@ -39,9 +41,9 @@ public class HuddleNotificationCoordinatorTests
 
             var shown = await _notifications.FirstAlert;
             Assert.Equal(alert.InitiatorUserId, shown.InitiatorUserId);
-            Assert.Equal("slack", shown.SourceId);      // stamped by the coordinator
+            Assert.Equal("slack", shown.SourceId.Value);      // provenance set by the source
             Assert.Equal("Slack", shown.SourceName);
-            Assert.Equal("slack", Assert.Single(_history.Recent).SourceId); // also recorded, stamped
+            Assert.Equal("slack", Assert.Single(_history.Recent).SourceId.Value); // also recorded
         }
         finally
         {
@@ -50,7 +52,7 @@ public class HuddleNotificationCoordinatorTests
     }
 
     [Fact]
-    public async Task Alerts_from_multiple_sources_all_flow_through_stamped_with_their_identity()
+    public async Task Alerts_from_multiple_sources_all_flow_through_carrying_their_identity()
     {
         var slack = new FakeAlertSource("slack", "Slack");
         var teams = new FakeAlertSource("teams", "Teams");
@@ -59,13 +61,13 @@ public class HuddleNotificationCoordinatorTests
         await coordinator.StartAsync(CancellationToken.None);
         try
         {
-            slack.Raise(SomeAlert());
-            teams.Raise(SomeAlert());
+            slack.Raise(SomeAlert("slack", "Slack"));
+            teams.Raise(SomeAlert("teams", "Teams"));
             await Task.Delay(150);
 
             Assert.Equal(2, _notifications.Shown.Count);
-            Assert.Contains(_notifications.Shown, a => a.SourceId == "slack" && a.SourceName == "Slack");
-            Assert.Contains(_notifications.Shown, a => a.SourceId == "teams" && a.SourceName == "Teams");
+            Assert.Contains(_notifications.Shown, a => a.SourceId == new SourceId("slack") && a.SourceName == "Slack");
+            Assert.Contains(_notifications.Shown, a => a.SourceId == new SourceId("teams") && a.SourceName == "Teams");
         }
         finally
         {

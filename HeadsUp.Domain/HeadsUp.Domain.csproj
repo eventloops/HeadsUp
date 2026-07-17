@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+    <RootNamespace>HeadsUp</RootNamespace>
+  </PropertyGroup>
+
+  <!-- The domain layer depends on nothing outward: no HeadsUp projects, no external packages. -->
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="HeadsUp.Tests" />
+  </ItemGroup>
+
+</Project>

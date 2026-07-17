@@ -86,16 +86,17 @@ public class WindowSmokeTests
     {
         var history = new AlertHistory();
         history.Record(new Models.Alert(
-            InitiatorUserId: "U1", InitiatorDisplayName: "Sarah Whitfield", InitiatorAvatarUrl: null,
-            ChannelId: "C1", ChannelName: "project-atlas", IsDirectMessage: false,
+            InitiatorUserId: new Models.UserId("U1"), InitiatorDisplayName: "Sarah Whitfield", InitiatorAvatarUrl: null,
+            ChannelId: new Models.ChannelId("C1"), ChannelName: "project-atlas", IsDirectMessage: false,
             Link: "https://app.slack.com/huddle/T1/C1", IsPriorityUser: true,
-            OccurredAt: DateTimeOffset.Now, Kind: Models.AlertKind.Mention, Preview: "can you take a look?"));
+            OccurredAt: DateTimeOffset.Now, SourceId: new Models.SourceId("slack"), SourceName: "Slack",
+            Kind: Models.AlertKind.Mention, Preview: "can you take a look?"));
 
         var snooze = new SnoozeService();
         snooze.SnoozeFor(TimeSpan.FromMinutes(30)); // exercise the muted banner too
 
         var status = new AppStatus();
-        var slack = status.Seed("slack", "Slack", "SlackClientApi"); // renders one source card
+        var slack = status.Seed(new Models.SourceId("slack"), "Slack", "SlackClientApi"); // renders one source card
         slack.SetConnection(true, "Watching for huddles");
         slack.SetAccount("cameron.lambert", "Procode");
 

@@ -1,4 +1,4 @@
-using HeadsUp.Services;
+using HeadsUp.Models;
 
 namespace HeadsUp.Configuration;
 
@@ -10,7 +10,7 @@ namespace HeadsUp.Configuration;
 /// </summary>
 public sealed class PriorityUser
 {
-    public string Source { get; set; } = SlackSource.Id;
+    public string Source { get; set; } = "slack";
     public string Id { get; set; } = string.Empty;
 }
 
@@ -26,8 +26,6 @@ public sealed class PriorityOptions
     public List<PriorityUser> Users { get; set; } = [];
 
     /// <summary>True when the given user, on the given source, is a priority user.</summary>
-    public bool IsPriority(string sourceId, string userId) =>
-        Users.Any(p =>
-            string.Equals(p.Source, sourceId, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(p.Id, userId, StringComparison.OrdinalIgnoreCase));
+    public bool IsPriority(SourceId source, UserId user) =>
+        Users.Any(p => new SourceId(p.Source) == source && new UserId(p.Id) == user);
 }

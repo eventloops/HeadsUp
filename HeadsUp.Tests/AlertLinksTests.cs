@@ -7,16 +7,16 @@ namespace HeadsUp.Tests;
 public class AlertLinksTests
 {
     private static Alert AlertWith(string link, string sourceId = "slack") => new(
-        InitiatorUserId: "U1",
+        InitiatorUserId: new UserId("U1"),
         InitiatorDisplayName: "Sarah",
         InitiatorAvatarUrl: null,
-        ChannelId: "C1",
+        ChannelId: new ChannelId("C1"),
         ChannelName: "general",
         IsDirectMessage: false,
         Link: link,
         IsPriorityUser: false,
         OccurredAt: DateTimeOffset.Now,
-        SourceId: sourceId,
+        SourceId: new SourceId(sourceId),
         SourceName: sourceId);
 
     // ------------------------------------------------------------------
