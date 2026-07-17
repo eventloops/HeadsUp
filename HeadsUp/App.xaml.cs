@@ -48,13 +48,15 @@ public partial class App : Application
         {
             await _host.StartAsync();
 
+            // We're back on the UI thread here (after awaiting StartAsync), so show directly.
+
             // First run (or --welcome): greet the user and let them pick what to be alerted on.
             if (e.Args.Contains("--welcome") || IsFirstRun())
-                Dispatcher.BeginInvoke(new Action(ShowWelcome));
+                ShowWelcome();
 
             // Dev aid: open the dashboard immediately, no connection required.
             if (e.Args.Contains("--dashboard"))
-                Dispatcher.BeginInvoke(new Action(ShowDashboard));
+                ShowDashboard();
 
             // Preview the popup without a real huddle: --test-popup [--priority]
             if (e.Args.Contains("--test-popup"))
