@@ -30,6 +30,23 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
     /// <summary>Live app status - bound directly by the view.</summary>
     public AppStatus Status { get; }
 
+    /// <summary>Which nav section is showing: Overview / Alerts / Priority / Appearance.</summary>
+    [ObservableProperty]
+    private string _selectedSection = "Overview";
+
+    /// <summary>The active theme name ("Dark"/"Light"), bound two-way by the Appearance choice.</summary>
+    [ObservableProperty]
+    private string _selectedThemeName = ThemeManager.Current.ToString();
+
+    /// <summary>Raised when the user picks a different theme; the app applies it and reopens.</summary>
+    public event EventHandler<AppTheme>? ThemeChangeRequested;
+
+    partial void OnSelectedThemeNameChanged(string value)
+    {
+        if (Enum.TryParse<AppTheme>(value, ignoreCase: true, out var t) && t != ThemeManager.Current)
+            ThemeChangeRequested?.Invoke(this, t);
+    }
+
     /// <summary>True while alerts are silenced (manual snooze or Slack DND).</summary>
     [ObservableProperty]
     private bool _isMuted;

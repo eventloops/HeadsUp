@@ -52,7 +52,11 @@ public class WindowSmokeTests
                     _ = new Application();
                 Application.Current!.Resources.MergedDictionaries.Add(new ResourceDictionary
                 {
-                    Source = new Uri("pack://application:,,,/HeadsUp;component/Themes/Theme.xaml")
+                    Source = new Uri("pack://application:,,,/HeadsUp;component/Themes/Colors.Dark.xaml")
+                });
+                Application.Current.Resources.MergedDictionaries.Add(new ResourceDictionary
+                {
+                    Source = new Uri("pack://application:,,,/HeadsUp;component/Themes/Controls.xaml")
                 });
 
                 ShowThenClose(BuildDashboard());

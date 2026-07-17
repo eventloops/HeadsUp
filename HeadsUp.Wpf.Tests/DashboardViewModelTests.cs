@@ -455,4 +455,41 @@ public class DashboardViewModelTests
         Assert.Empty(vm.MutedChannels);
         Assert.Empty(_alertStore.LastSaved!.MutedChannels);
     }
+
+    // ------------------------------------------------------------------
+    // Navigation + theme
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void Starts_on_the_overview_section()
+    {
+        Assert.Equal("Overview", CreateVm().SelectedSection);
+    }
+
+    [Fact]
+    public void Picking_a_different_theme_requests_the_change()
+    {
+        var vm = CreateVm();
+        AppTheme? requested = null;
+        vm.ThemeChangeRequested += (_, t) => requested = t;
+
+        // Whatever the current theme is, the other one triggers a change.
+        var other = ThemeManager.Current == AppTheme.Dark ? "Light" : "Dark";
+        vm.SelectedThemeName = other;
+
+        Assert.NotNull(requested);
+        Assert.Equal(other, requested.ToString());
+    }
+
+    [Fact]
+    public void Picking_the_current_theme_does_nothing()
+    {
+        var vm = CreateVm();
+        var raised = false;
+        vm.ThemeChangeRequested += (_, _) => raised = true;
+
+        vm.SelectedThemeName = ThemeManager.Current.ToString();
+
+        Assert.False(raised);
+    }
 }

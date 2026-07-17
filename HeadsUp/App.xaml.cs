@@ -16,13 +16,18 @@ public partial class App : Application
     private AboutWindow? _about;
     private bool _dashboardShownOnce;
 
+    private string? _pendingDashboardSection;
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
-        // Give every window the dark OS title bar to match the dark theme.
+        // Apply the saved colour theme before any window loads.
+        ThemeManager.Initialize();
+
+        // Match each window's OS title bar to the current theme.
         EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent,
-            new RoutedEventHandler((s, _) => TryEnableDarkTitleBar((Window)s)));
+            new RoutedEventHandler((s, _) => ApplyTitleBarTheme((Window)s)));
 
         _host = Program.CreateHostBuilder(e.Args).Build();
 
@@ -95,6 +100,15 @@ public partial class App : Application
         if (_dashboard is null)
         {
             _dashboard = _host!.Services.GetRequiredService<DashboardWindow>();
+            if (_dashboard.DataContext is DashboardViewModel vm)
+            {
+                if (_pendingDashboardSection is not null)
+                {
+                    vm.SelectedSection = _pendingDashboardSection;
+                    _pendingDashboardSection = null;
+                }
+                vm.ThemeChangeRequested += OnThemeChangeRequested;
+            }
             _dashboard.Closed += (_, _) => _dashboard = null;
             _dashboard.Show();
         }
@@ -102,6 +116,15 @@ public partial class App : Application
         {
             _dashboard.Activate();
         }
+    }
+
+    // Theme lives in StaticResource brushes, so re-open the dashboard to re-read the new theme.
+    private void OnThemeChangeRequested(object? sender, AppTheme theme)
+    {
+        ThemeManager.Apply(theme);
+        _pendingDashboardSection = "Appearance";
+        _dashboard?.Close();   // clears _dashboard via the Closed handler
+        ShowDashboard();
     }
 
     private void ShowAbout()
@@ -164,12 +187,12 @@ public partial class App : Application
     [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
 
-    private static void TryEnableDarkTitleBar(Window window)
+    private static void ApplyTitleBarTheme(Window window)
     {
         try
         {
             var hwnd = new System.Windows.Interop.WindowInteropHelper(window).EnsureHandle();
-            int useDark = 1; // DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+            int useDark = ThemeManager.Current == AppTheme.Dark ? 1 : 0; // DWMWA_USE_IMMERSIVE_DARK_MODE = 20
             DwmSetWindowAttribute(hwnd, 20, ref useDark, sizeof(int));
         }
         catch { /* older Windows without the attribute; harmless */ }
