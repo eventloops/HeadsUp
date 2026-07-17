@@ -8,9 +8,10 @@ or menu bar (macOS/Linux).
 
 - A prominent popup showing **who** and **where** — avatar, channel, a message
   preview for mentions/DMs/keywords, and a one-click **Join** button for huddles
-- A tray **dashboard**: live connection status, a **"Notify me about"** panel to
-  toggle each alert kind, and a searchable **priority users** editor — their
-  alerts get extra-prominent, incoming-call styling
+- A tray **dashboard**: live connection status, a **recent-alerts** history (catch
+  what you missed while away — click any row to open it in Slack), a **"Notify me
+  about"** panel to toggle each alert kind, and a searchable **priority users**
+  editor — their alerts get extra-prominent, incoming-call styling
 - Optional alert sound; your own huddles and messages never alert
 - Runs entirely per-user — **no admin rights** needed to install or run
 
@@ -218,6 +219,14 @@ Right-click (or **double-click**) the tray icon → **Open dashboard**. It shows
 — connection, signed-in account, workspace, and detection mode — plus the **"Notify me
 about"** alert toggles (with the keyword list) and the priority-users editor. Everything
 applies immediately. It opens itself automatically the first time you connect.
+
+Under it, two tabs:
+
+- **Recent alerts** — a running list of what you've been alerted to this session, newest
+  first, so a popup you missed while away isn't lost. Click any row to open it in Slack;
+  *Clear* empties the list. (In-memory — it resets when the app restarts.)
+- **Priority users** — search your workspace and add people whose alerts should get the
+  louder, incoming-call treatment.
 
 ## Running in the background
 

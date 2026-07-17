@@ -107,40 +107,6 @@ public class HuddlePopupViewModelTests
     }
 
     // ------------------------------------------------------------------
-    // Join targets (desktop deep link first, web fallback last)
-    // ------------------------------------------------------------------
-
-    [Fact]
-    public void Huddle_link_prefers_the_slack_app_huddle_scheme()
-    {
-        var targets = HuddlePopupViewModel.JoinTargets(
-            "https://app.slack.com/huddle/T123/C456").ToList();
-
-        Assert.Equal(
-            new[] { "slack://huddle?team=T123&id=C456", "https://app.slack.com/huddle/T123/C456" },
-            targets);
-    }
-
-    [Fact]
-    public void Client_link_prefers_the_slack_app_channel_scheme()
-    {
-        var targets = HuddlePopupViewModel.JoinTargets(
-            "https://app.slack.com/client/T123/C456").ToList();
-
-        Assert.Equal(
-            new[] { "slack://channel?team=T123&id=C456", "https://app.slack.com/client/T123/C456" },
-            targets);
-    }
-
-    [Fact]
-    public void Unrecognized_link_is_used_as_is()
-    {
-        Assert.Equal(
-            new[] { "slack://channel?id=C456" },
-            HuddlePopupViewModel.JoinTargets("slack://channel?id=C456").ToList());
-    }
-
-    // ------------------------------------------------------------------
     // Commands
     // ------------------------------------------------------------------
 

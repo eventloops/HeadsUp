@@ -1,8 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using HeadsUp.Models;
-using System.Diagnostics;
-using System.Text.RegularExpressions;
+using HeadsUp.Services;
 
 namespace HeadsUp.ViewModels;
 
@@ -46,7 +45,7 @@ public sealed partial class HuddlePopupViewModel : ObservableObject
     {
         InitiatorName = alert.InitiatorDisplayName;
         AvatarUrl = alert.InitiatorAvatarUrl;
-        Initials = GetInitials(alert.InitiatorDisplayName);
+        Initials = AlertDisplay.Initials(alert.InitiatorDisplayName);
         ChannelDisplay = alert.IsDirectMessage
             ? $"DM with {alert.InitiatorDisplayName}"
             : $"#{alert.ChannelName}";
@@ -58,65 +57,20 @@ public sealed partial class HuddlePopupViewModel : ObservableObject
         IsPriorityUser = alert.IsPriorityUser;
         _link = alert.Link;
 
-        (Headline, Icon, ActionLabel) = alert.Kind switch
-        {
-            AlertKind.Mention => ("Mentioned you", "\U0001F4AC", "Open"),
-            AlertKind.DirectMessage => ("Direct message", "✉", "Open"),
-            AlertKind.Keyword => ("Keyword match", "\U0001F514", "Open"),
-            _ => ("Huddle started", "\U0001F3A7", "Join huddle"),
-        };
-    }
-
-    private static string GetInitials(string displayName)
-    {
-        var parts = displayName.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return parts.Length switch
-        {
-            0 => "?",
-            1 => char.ToUpperInvariant(parts[0][0]).ToString(),
-            _ => $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}"
-        };
+        (Headline, Icon, ActionLabel) = AlertDisplay.Describe(alert.Kind);
     }
 
     /// <summary>
     /// Launches one join target, returning true when it was handed off. Replaceable in
     /// tests, where opening a real app or browser is not an option.
     /// </summary>
-    internal Func<string, bool> Launch { get; set; } = target =>
-    {
-        Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
-        return true;
-    };
+    internal Func<string, bool> Launch { get; set; } = AlertLauncher.DefaultLaunch;
 
     [RelayCommand]
     private void JoinHuddle()
     {
-        // Prefer the desktop Slack app (slack:// scheme) over bouncing through the browser;
-        // fall back to the next target if a launch fails (e.g. the app isn't installed).
-        foreach (var target in JoinTargets(_link))
-        {
-            try
-            {
-                if (Launch(target))
-                    break;
-            }
-            catch { /* try the next target */ }
-        }
+        AlertLauncher.Open(_link, Launch);
         CloseRequested?.Invoke(this, EventArgs.Empty);
-    }
-
-    /// <summary>Desktop-app deep link first, then the original (web) link as a fallback.</summary>
-    internal static IEnumerable<string> JoinTargets(string link)
-    {
-        var huddle = Regex.Match(link, @"app\.slack\.com/huddle/(?<team>[^/]+)/(?<channel>[^/?#]+)");
-        if (huddle.Success)
-            yield return $"slack://huddle?team={huddle.Groups["team"].Value}&id={huddle.Groups["channel"].Value}";
-
-        var channel = Regex.Match(link, @"app\.slack\.com/client/(?<team>[^/]+)/(?<channel>[^/?#]+)");
-        if (channel.Success)
-            yield return $"slack://channel?team={channel.Groups["team"].Value}&id={channel.Groups["channel"].Value}";
-
-        yield return link;
     }
 
     [RelayCommand]

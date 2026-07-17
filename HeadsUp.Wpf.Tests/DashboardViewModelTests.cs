@@ -1,4 +1,5 @@
 using HeadsUp.Configuration;
+using HeadsUp.Models;
 using HeadsUp.Services;
 using HeadsUp.ViewModels;
 using Xunit;
@@ -61,13 +62,26 @@ public class DashboardViewModelTests
     private readonly FakeDirectory _directory = new();
     private readonly FakePriorityStore _priorityStore = new();
     private readonly FakeAlertStore _alertStore = new();
+    private readonly AlertHistory _history = new();
     private readonly AppStatus _status = new();
 
     private static DirectoryUser User(string id, string name, string? real = null) =>
         new(id, name, real, null);
 
+    private static Alert Alert(string channel = "general", bool dm = false, AlertKind kind = AlertKind.Huddle) => new(
+        InitiatorUserId: "U1",
+        InitiatorDisplayName: "Sarah Whitfield",
+        InitiatorAvatarUrl: null,
+        ChannelId: dm ? "D1" : "C1",
+        ChannelName: channel,
+        IsDirectMessage: dm,
+        Link: "https://app.slack.com/huddle/T1/C1",
+        IsPriorityUser: false,
+        OccurredAt: DateTimeOffset.Now,
+        Kind: kind);
+
     private DashboardViewModel CreateVm() =>
-        new(_status, _directory, _priorityStore, _alertStore);
+        new(_status, _directory, _priorityStore, _alertStore, _history);
 
     // ------------------------------------------------------------------
     // Alert settings round trip
@@ -283,5 +297,78 @@ public class DashboardViewModelTests
         await vm.AddCommand.ExecuteAsync(User("U1", "Sarah") with { Id = "U9" });
 
         Assert.Contains("Couldn't save priority users", vm.DirectoryStatus);
+    }
+
+    // ------------------------------------------------------------------
+    // Recent alerts
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void Construction_seeds_recent_alerts_newest_first()
+    {
+        _history.Record(Alert("general"));
+        _history.Record(Alert("random"));
+
+        var vm = CreateVm();
+
+        Assert.Equal(new[] { "#random", "#general" }, vm.RecentAlerts.Select(r => r.Where));
+    }
+
+    [Fact]
+    public void New_alerts_appear_live()
+    {
+        var vm = CreateVm();
+        Assert.Empty(vm.RecentAlerts);
+
+        _history.Record(Alert("general"));
+
+        var row = Assert.Single(vm.RecentAlerts);
+        Assert.Equal("Sarah Whitfield", row.InitiatorName);
+        Assert.Equal("Huddle started", row.Headline);
+    }
+
+    [Fact]
+    public void Clear_command_empties_history_and_list()
+    {
+        _history.Record(Alert());
+        var vm = CreateVm();
+
+        vm.ClearHistoryCommand.Execute(null);
+
+        Assert.Empty(vm.RecentAlerts);
+        Assert.Empty(_history.Recent);
+    }
+
+    [Fact]
+    public void Open_command_launches_the_alert_link()
+    {
+        _history.Record(Alert());
+        var vm = CreateVm();
+        var launched = new List<string>();
+        vm.Launch = t => { launched.Add(t); return true; };
+
+        vm.OpenAlertCommand.Execute(vm.RecentAlerts[0]);
+
+        Assert.Equal("slack://huddle?team=T1&id=C1", launched.Single());
+    }
+
+    [Fact]
+    public void Open_command_ignores_null()
+    {
+        var vm = CreateVm();
+        vm.Launch = _ => throw new InvalidOperationException("should not be called");
+
+        vm.OpenAlertCommand.Execute(null); // no-op, must not throw
+    }
+
+    [Fact]
+    public void Disposing_stops_live_updates()
+    {
+        var vm = CreateVm();
+        vm.Dispose();
+
+        _history.Record(Alert());
+
+        Assert.Empty(vm.RecentAlerts);
     }
 }

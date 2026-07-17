@@ -32,6 +32,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPrioritySettingsStore, JsonPrioritySettingsStore>();
         services.AddSingleton<IAlertSettingsStore, JsonAlertSettingsStore>();
 
+        // In-memory log of surfaced alerts, shown in the dashboard's "Recent alerts".
+        services.AddSingleton<IAlertHistory, AlertHistory>();
+
         services.AddHostedService<HuddleNotificationCoordinator>();
 
         return services;

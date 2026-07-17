@@ -12,15 +12,18 @@ public sealed class HuddleNotificationCoordinator : BackgroundService
 {
     private readonly IAlertSource _eventSource;
     private readonly INotificationService _notificationService;
+    private readonly IAlertHistory _history;
     private readonly ILogger<HuddleNotificationCoordinator> _logger;
 
     public HuddleNotificationCoordinator(
         IAlertSource eventSource,
         INotificationService notificationService,
+        IAlertHistory history,
         ILogger<HuddleNotificationCoordinator> logger)
     {
         _eventSource = eventSource;
         _notificationService = notificationService;
+        _history = history;
         _logger = logger;
     }
 
@@ -40,6 +43,9 @@ public sealed class HuddleNotificationCoordinator : BackgroundService
 
     private void OnAlertRaised(object? sender, Alert e)
     {
+        // Log it to history first so the dashboard reflects it even if the popup is missed.
+        _history.Record(e);
+
         // Fire-and-forget with logging; do not block the Slack event thread.
         _ = _notificationService.ShowAlertAsync(e)
             .ContinueWith(t =>

@@ -13,5 +13,6 @@ public partial class DashboardWindow : Window
         DataContext = viewModel;
         _viewModel = viewModel;
         Loaded += async (_, _) => await _viewModel.LoadAsync();
+        Closed += (_, _) => _viewModel.Dispose(); // stop listening to history changes
     }
 }

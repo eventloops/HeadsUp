@@ -7,19 +7,30 @@ using System.Collections.ObjectModel;
 namespace HeadsUp.ViewModels;
 
 /// <summary>
-/// Backs the dashboard window: live status (bound straight to <see cref="AppStatus"/>) plus a
-/// priority-users editor that searches the workspace directory and persists picks.
+/// Backs the dashboard window: live status (bound straight to <see cref="AppStatus"/>), the
+/// recent-alerts history, the "Notify me about" toggles, and a priority-users editor that
+/// searches the workspace directory and persists picks.
 /// </summary>
-public sealed partial class DashboardViewModel : ObservableObject
+public sealed partial class DashboardViewModel : ObservableObject, IDisposable
 {
     private readonly IUserDirectory _directory;
     private readonly IPrioritySettingsStore _priorityStore;
     private readonly IAlertSettingsStore _alertStore;
+    private readonly IAlertHistory _history;
+    // Captured at construction (the UI thread in the app; null under test) so history
+    // changes raised on a background thread marshal back before touching the collection.
+    private readonly SynchronizationContext? _sync = SynchronizationContext.Current;
     private IReadOnlyList<DirectoryUser> _allUsers = Array.Empty<DirectoryUser>();
     private bool _loadingAlerts;
 
+    /// <summary>Launches an alert's link; swapped out in tests. Defaults to the OS handler.</summary>
+    internal Func<string, bool> Launch { get; set; } = AlertLauncher.DefaultLaunch;
+
     /// <summary>Live app status - bound directly by the view.</summary>
     public AppStatus Status { get; }
+
+    /// <summary>Recent surfaced alerts, newest first.</summary>
+    public ObservableCollection<AlertHistoryItem> RecentAlerts { get; } = new();
 
     /// <summary>Current priority users, resolved to names.</summary>
     public ObservableCollection<DirectoryUser> PriorityUsers { get; } = new();
@@ -56,14 +67,53 @@ public sealed partial class DashboardViewModel : ObservableObject
         AppStatus status,
         IUserDirectory directory,
         IPrioritySettingsStore priorityStore,
-        IAlertSettingsStore alertStore)
+        IAlertSettingsStore alertStore,
+        IAlertHistory history)
     {
         Status = status;
         _directory = directory;
         _priorityStore = priorityStore;
         _alertStore = alertStore;
+        _history = history;
         LoadAlerts();
+
+        RefreshHistory();
+        _history.Changed += OnHistoryChanged;
     }
+
+    // ------------------------------------------------------------------
+    // Recent alerts
+    // ------------------------------------------------------------------
+
+    private void OnHistoryChanged(object? sender, EventArgs e)
+    {
+        // History changes fire on the Slack background thread; marshal to the UI thread
+        // before touching the bound collection. If we're already on the captured context
+        // (or there is none), update inline.
+        if (_sync is null || _sync == SynchronizationContext.Current)
+            RefreshHistory();
+        else
+            _sync.Post(_ => RefreshHistory(), null);
+    }
+
+    private void RefreshHistory()
+    {
+        RecentAlerts.Clear();
+        foreach (var alert in _history.Recent)
+            RecentAlerts.Add(new AlertHistoryItem(alert));
+    }
+
+    [RelayCommand]
+    private void OpenAlert(AlertHistoryItem? item)
+    {
+        if (item is not null)
+            AlertLauncher.Open(item.Alert.Link, Launch);
+    }
+
+    [RelayCommand]
+    private void ClearHistory() => _history.Clear();
+
+    public void Dispose() => _history.Changed -= OnHistoryChanged;
 
     private void LoadAlerts()
     {

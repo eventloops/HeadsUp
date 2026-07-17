@@ -38,6 +38,7 @@ public class ServiceCollectionExtensionsTests
         Assert.True(provider.GetRequiredService<IOptionsMonitor<AlertOptions>>().CurrentValue.Keywords);
         Assert.IsType<JsonPrioritySettingsStore>(provider.GetRequiredService<IPrioritySettingsStore>());
         Assert.IsType<JsonAlertSettingsStore>(provider.GetRequiredService<IAlertSettingsStore>());
+        Assert.IsType<AlertHistory>(provider.GetRequiredService<IAlertHistory>());
     }
 
     [Fact]
