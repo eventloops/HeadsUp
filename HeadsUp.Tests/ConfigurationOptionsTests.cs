@@ -10,24 +10,34 @@ public class ConfigurationOptionsTests
     // ------------------------------------------------------------------
 
     [Fact]
-    public void Detection_defaults_to_the_client_api_prototype()
+    public void Detection_defaults_to_no_explicit_connectors()
     {
         var options = new DetectionOptions();
-        Assert.Equal(DetectionOptions.SlackClientApi, options.Mode);
-        Assert.True(options.UseSlackClientApi);
+        Assert.Empty(options.Connectors);
         Assert.False(options.NotifyOwnHuddles);
     }
 
-    [Theory]
-    [InlineData("SlackClientApi", true)]
-    [InlineData("slackclientapi", true)] // case-insensitive
-    [InlineData("SLACKCLIENTAPI", true)]
-    [InlineData("SlackApi", false)]
-    [InlineData("", false)]
-    [InlineData("garbage", false)]
-    public void UseSlackClientApi_matches_mode_case_insensitively(string mode, bool expected)
+    [Fact]
+    public void ResolveConnectors_defaults_to_a_single_client_api_connector_when_empty()
     {
-        Assert.Equal(expected, new DetectionOptions { Mode = mode }.UseSlackClientApi);
+        var connectors = new DetectionOptions().ResolveConnectors();
+
+        Assert.Equal(DetectionOptions.SlackClientApi, Assert.Single(connectors).Type);
+    }
+
+    [Fact]
+    public void ResolveConnectors_uses_the_configured_connector_list()
+    {
+        var options = new DetectionOptions
+        {
+            Connectors =
+            {
+                new ConnectorOptions { Type = "SlackApi" },
+                new ConnectorOptions { Type = "Teams" },
+            }
+        };
+
+        Assert.Equal(new[] { "SlackApi", "Teams" }, options.ResolveConnectors().Select(c => c.Type));
     }
 
     // ------------------------------------------------------------------
@@ -80,11 +90,37 @@ public class ConfigurationOptionsTests
     }
 
     [Fact]
-    public void Slack_defaults_to_empty_tokens_and_no_priority_users()
+    public void Slack_defaults_to_empty_tokens()
     {
         var options = new SlackOptions();
         Assert.Equal(string.Empty, options.AppToken);
         Assert.Equal(string.Empty, options.UserToken);
-        Assert.Empty(options.PriorityUsers);
+    }
+
+    // ------------------------------------------------------------------
+    // PriorityOptions / MutedChannel namespacing
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void Priority_defaults_to_no_users()
+    {
+        Assert.Empty(new PriorityOptions().Users);
+    }
+
+    [Fact]
+    public void IsPriority_matches_on_source_and_id_case_insensitively()
+    {
+        var options = new PriorityOptions { Users = { new PriorityUser { Source = "slack", Id = "U1" } } };
+
+        Assert.True(options.IsPriority("SLACK", "u1"));
+        Assert.False(options.IsPriority("teams", "U1")); // same id, different source
+        Assert.False(options.IsPriority("slack", "U2"));
+    }
+
+    [Fact]
+    public void New_namespaced_entries_default_to_the_slack_source()
+    {
+        Assert.Equal("slack", new PriorityUser().Source);
+        Assert.Equal("slack", new MutedChannel().Source);
     }
 }

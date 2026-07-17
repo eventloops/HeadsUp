@@ -258,26 +258,52 @@
                                            VerticalAlignment="Center" FontWeight="SemiBold"/>
                             </StackPanel>
                         </Border>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="110"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Account" Style="{StaticResource Muted}"/>
-                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Status.Account, TargetNullValue='—'}"/>
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Workspace" Style="{StaticResource Muted}" Margin="0,6,0,0"/>
-                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Status.Team, TargetNullValue='—'}" Margin="0,6,0,0"/>
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Detection" Style="{StaticResource Muted}" Margin="0,6,0,0"/>
-                            <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,6,0,0">
-                                <TextBlock Text="{Binding Status.Mode}"/>
-                                <TextBlock Text="{Binding Status.CredentialSource, StringFormat=' · {0}'}" Style="{StaticResource Faint}"/>
-                            </StackPanel>
-                        </Grid>
+                        <ItemsControl ItemsSource="{Binding Status.Sources}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,0,0,4">
+                                        <!-- Source header: name + live dot + short state -->
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                            <Ellipse Width="9" Height="9" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                <Ellipse.Style>
+                                                    <Style TargetType="Ellipse">
+                                                        <Setter Property="Fill" Value="{StaticResource BrushFaint}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                                                                <Setter Property="Fill" Value="{StaticResource BrushJoin}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Ellipse.Style>
+                                            </Ellipse>
+                                            <TextBlock Text="{Binding DisplayName}" Style="{StaticResource H2}" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding StatusMessage, StringFormat=' · {0}'}" Style="{StaticResource Faint}"
+                                                       FontSize="12" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <Grid Margin="17,0,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="110"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Account" Style="{StaticResource Muted}"/>
+                                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Account, TargetNullValue='—'}"/>
+                                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Workspace" Style="{StaticResource Muted}" Margin="0,6,0,0"/>
+                                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Team, TargetNullValue='—'}" Margin="0,6,0,0"/>
+                                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Detection" Style="{StaticResource Muted}" Margin="0,6,0,0"/>
+                                            <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,6,0,0">
+                                                <TextBlock Text="{Binding Mode}"/>
+                                                <TextBlock Text="{Binding CredentialSource, StringFormat=' · {0}'}" Style="{StaticResource Faint}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </StackPanel>
                 </Border>
 

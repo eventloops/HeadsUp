@@ -7,7 +7,7 @@ namespace HeadsUp.Tests;
 
 public class AlertClassifierTests
 {
-    private const string SelfId = "U111SELF";
+    private const string Slack = "slack";
 
     private static AlertOptions AllOn(params string[] keywords) => new()
     {
@@ -19,29 +19,40 @@ public class AlertClassifierTests
     };
 
     // ------------------------------------------------------------------
-    // Muted channels
+    // Muted channels (now source-aware)
     // ------------------------------------------------------------------
 
     [Fact]
-    public void IsChannelMuted_matches_case_insensitively()
+    public void IsChannelMuted_matches_case_insensitively_on_id_and_source()
     {
         var alerts = AllOn();
-        alerts.MutedChannels.Add(new MutedChannel { Id = "C1", Name = "general" });
+        alerts.MutedChannels.Add(new MutedChannel { Id = "C1", Name = "general", Source = Slack });
 
-        Assert.True(AlertClassifier.IsChannelMuted("c1", alerts));
-        Assert.False(AlertClassifier.IsChannelMuted("C2", alerts));
+        Assert.True(AlertClassifier.IsChannelMuted("c1", "SLACK", alerts));
+        Assert.False(AlertClassifier.IsChannelMuted("C2", Slack, alerts));
+    }
+
+    [Fact]
+    public void A_muted_channel_only_silences_its_own_source()
+    {
+        var alerts = AllOn();
+        alerts.MutedChannels.Add(new MutedChannel { Id = "C1", Name = "general", Source = Slack });
+
+        // Same id, different source: not muted (ids can't collide across connectors).
+        Assert.True(AlertClassifier.IsChannelMuted("C1", Slack, alerts));
+        Assert.False(AlertClassifier.IsChannelMuted("C1", "teams", alerts));
     }
 
     [Fact]
     public void A_muted_channel_never_classifies_a_message()
     {
         var alerts = AllOn("deploy");
-        alerts.MutedChannels.Add(new MutedChannel { Id = "C1", Name = "general" });
+        alerts.MutedChannels.Add(new MutedChannel { Id = "C1", Name = "general", Source = Slack });
 
-        // Would be a keyword hit, but the channel is muted.
-        Assert.Null(AlertClassifier.ClassifyMessage("deploy now", "C1", SelfId, alerts));
+        // Would be a keyword hit, but the channel is muted for this source.
+        Assert.Null(AlertClassifier.Classify(false, false, "deploy now", "C1", Slack, alerts));
         // A different channel still alerts.
-        Assert.Equal(AlertKind.Keyword, AlertClassifier.ClassifyMessage("deploy now", "C2", SelfId, alerts));
+        Assert.Equal(AlertKind.Keyword, AlertClassifier.Classify(false, false, "deploy now", "C2", Slack, alerts));
     }
 
     // ------------------------------------------------------------------
@@ -58,7 +69,7 @@ public class AlertClassifierTests
         Assert.Equal(expected, AlertClassifier.IsHuddleSubtype(subtype));
 
     // ------------------------------------------------------------------
-    // ClassifyMessage
+    // Classify (source-neutral policy)
     // ------------------------------------------------------------------
 
     [Fact]
@@ -66,29 +77,23 @@ public class AlertClassifierTests
     {
         var alerts = AllOn("deploy");
 
-        // A DM that @-mentions you and contains a keyword is still a Mention.
+        // A DM that mentions you and contains a keyword is still a Mention.
         Assert.Equal(AlertKind.Mention,
-            AlertClassifier.ClassifyMessage($"deploy now <@{SelfId}>", "D123", SelfId, alerts));
+            AlertClassifier.Classify(isMention: true, isDm: true, "deploy now", "D123", Slack, alerts));
 
         // A DM with a keyword (no mention) is a DirectMessage.
         Assert.Equal(AlertKind.DirectMessage,
-            AlertClassifier.ClassifyMessage("deploy now", "D123", SelfId, alerts));
+            AlertClassifier.Classify(isMention: false, isDm: true, "deploy now", "D123", Slack, alerts));
 
         // A channel message with a keyword is a Keyword.
         Assert.Equal(AlertKind.Keyword,
-            AlertClassifier.ClassifyMessage("deploy now", "C123", SelfId, alerts));
+            AlertClassifier.Classify(isMention: false, isDm: false, "deploy now", "C123", Slack, alerts));
     }
 
     [Fact]
     public void Plain_channel_message_does_not_alert()
     {
-        Assert.Null(AlertClassifier.ClassifyMessage("hello world", "C123", SelfId, AllOn("deploy")));
-    }
-
-    [Fact]
-    public void Mentions_of_someone_else_do_not_alert()
-    {
-        Assert.Null(AlertClassifier.ClassifyMessage("<@U999OTHER> ping", "C123", SelfId, AllOn()));
+        Assert.Null(AlertClassifier.Classify(false, false, "hello world", "C123", Slack, AllOn("deploy")));
     }
 
     [Fact]
@@ -102,7 +107,7 @@ public class AlertClassifierTests
             KeywordList = ["deploy"]
         };
 
-        Assert.Null(AlertClassifier.ClassifyMessage($"<@{SelfId}> deploy", "D123", SelfId, offAlerts));
+        Assert.Null(AlertClassifier.Classify(isMention: true, isDm: true, "deploy", "D123", Slack, offAlerts));
     }
 
     [Fact]
@@ -112,13 +117,7 @@ public class AlertClassifierTests
         alerts.Mentions = false;
 
         Assert.Equal(AlertKind.DirectMessage,
-            AlertClassifier.ClassifyMessage($"<@{SelfId}> hi", "D123", SelfId, alerts));
-    }
-
-    [Fact]
-    public void Unknown_self_id_never_matches_a_mention()
-    {
-        Assert.Null(AlertClassifier.ClassifyMessage("<@U111SELF> hi", "C123", null, AllOn()));
+            AlertClassifier.Classify(isMention: true, isDm: true, "hi", "D123", Slack, alerts));
     }
 
     // ------------------------------------------------------------------
@@ -139,28 +138,26 @@ public class AlertClassifierTests
     }
 
     // ------------------------------------------------------------------
-    // Preview
+    // Truncate
     // ------------------------------------------------------------------
 
     [Fact]
-    public void Preview_strips_slack_tokens_and_newlines()
+    public void Truncate_flattens_newlines_and_trims()
     {
-        // Angle-bracket tokens (mentions, links) are removed, newlines flattened, ends trimmed.
-        Assert.Equal("hey , the link",
-            AlertClassifier.Preview("hey <@U123>,\nthe link <https://example.com|here> "));
+        Assert.Equal("a b", AlertClassifier.Truncate("a\nb "));
     }
 
     [Fact]
-    public void Preview_clamps_long_text_at_140_chars()
+    public void Truncate_clamps_long_text_at_140_chars()
     {
-        var preview = AlertClassifier.Preview(new string('x', 200));
+        var preview = AlertClassifier.Truncate(new string('x', 200));
         Assert.Equal(141, preview.Length); // 140 + ellipsis
         Assert.EndsWith("…", preview);
     }
 
     [Fact]
-    public void Preview_leaves_short_text_alone()
+    public void Truncate_leaves_short_text_alone()
     {
-        Assert.Equal("short and sweet", AlertClassifier.Preview("short and sweet"));
+        Assert.Equal("short and sweet", AlertClassifier.Truncate("short and sweet"));
     }
 }

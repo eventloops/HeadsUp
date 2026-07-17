@@ -14,16 +14,18 @@ public interface IAlertGate
 }
 
 /// <summary>
-/// Silences alerts while the user has manually snoozed, or while their Slack Do Not Disturb
-/// is active. History still records everything (see <see cref="HuddleNotificationCoordinator"/>);
-/// snooze only suppresses the popup and sound.
+/// Silences alerts while the user has manually snoozed, or while any connected source's
+/// Do Not Disturb is active. History still records everything (see
+/// <see cref="HuddleNotificationCoordinator"/>); snooze only suppresses the popup and sound.
 /// </summary>
 public sealed class SnoozeService : IAlertGate, IDisposable
 {
     private readonly object _gate = new();
     private readonly Timer _expiry = new() { AutoReset = false };
     private DateTimeOffset? _manualUntil;   // manual snooze end
-    private DateTimeOffset? _slackDndUntil; // end of the user's active Slack DND, if any
+    // Per-source Do-Not-Disturb: source id -> (display name, end time). A source with no
+    // active DND is removed. Keyed so multiple connectors each contribute independently.
+    private readonly Dictionary<string, (string Name, DateTimeOffset Until)> _sourceDnd = new();
 
     public event EventHandler? Changed;
 
@@ -35,10 +37,10 @@ public sealed class SnoozeService : IAlertGate, IDisposable
         get { lock (_gate) return Active(_manualUntil) ? _manualUntil : null; }
     }
 
-    /// <summary>True while the user's Slack Do Not Disturb is in effect.</summary>
-    public bool SlackDndActive
+    /// <summary>True while any connected source's Do Not Disturb is in effect.</summary>
+    public bool AnySourceDndActive
     {
-        get { lock (_gate) return Active(_slackDndUntil); }
+        get { lock (_gate) return ActiveDndSource() is not null; }
     }
 
     public bool IsMuted(out string reason)
@@ -50,9 +52,9 @@ public sealed class SnoozeService : IAlertGate, IDisposable
                 reason = $"Snoozed until {_manualUntil!.Value.ToLocalTime():h:mm tt}";
                 return true;
             }
-            if (Active(_slackDndUntil))
+            if (ActiveDndSource() is { } dnd)
             {
-                reason = "Do Not Disturb is on in Slack";
+                reason = $"Do Not Disturb is on in {dnd.Name}";
                 return true;
             }
             reason = string.Empty;
@@ -85,15 +87,26 @@ public sealed class SnoozeService : IAlertGate, IDisposable
         RaiseChanged();
     }
 
-    /// <summary>Records the user's current Slack DND end time (null clears it). Fed by the DND poller.</summary>
-    public void SetSlackDnd(DateTimeOffset? until)
+    /// <summary>
+    /// Records a source's current Do Not Disturb end time (null clears it). Fed by each
+    /// connector's DND poller; keyed by <paramref name="sourceId"/> so sources are independent.
+    /// </summary>
+    public void SetSourceDnd(string sourceId, string sourceName, DateTimeOffset? until)
     {
         lock (_gate)
         {
-            var next = Active(until) ? until : null;
-            if (Nullable.Equals(next, _slackDndUntil))
-                return; // unchanged — don't churn the UI
-            _slackDndUntil = next;
+            var next = Active(until) ? until : (DateTimeOffset?)null;
+            var had = _sourceDnd.TryGetValue(sourceId, out var existing);
+            if (next is null)
+            {
+                if (!had) return;       // already clear — don't churn the UI
+                _sourceDnd.Remove(sourceId);
+            }
+            else
+            {
+                if (had && existing.Until == next.Value) return; // unchanged
+                _sourceDnd[sourceId] = (sourceName, next.Value);
+            }
         }
         RaiseChanged();
     }
@@ -112,6 +125,15 @@ public sealed class SnoozeService : IAlertGate, IDisposable
     }
 
     private static bool Active(DateTimeOffset? until) => until is { } u && u > DateTimeOffset.Now;
+
+    /// <summary>The first source whose DND is active right now, or null. Call under <see cref="_gate"/>.</summary>
+    private (string Name, DateTimeOffset Until)? ActiveDndSource()
+    {
+        foreach (var entry in _sourceDnd.Values)
+            if (Active(entry.Until))
+                return entry;
+        return null;
+    }
 
     private void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
 

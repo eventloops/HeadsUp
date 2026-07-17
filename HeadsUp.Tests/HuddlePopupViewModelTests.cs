@@ -1,4 +1,5 @@
 using HeadsUp.Models;
+using HeadsUp.Services;
 using HeadsUp.ViewModels;
 using Xunit;
 
@@ -6,6 +7,8 @@ namespace HeadsUp.Tests;
 
 public class HuddlePopupViewModelTests
 {
+    private static readonly AlertLinks Links = new(new[] { new SlackAlertLinkResolver() });
+
     private static Alert MakeAlert(
         string displayName = "Sarah Whitfield",
         string channelName = "project-atlas",
@@ -24,12 +27,16 @@ public class HuddlePopupViewModelTests
             IsPriorityUser: isPriority,
             OccurredAt: DateTimeOffset.Now,
             Kind: kind,
-            Preview: preview);
+            Preview: preview,
+            SourceId: "slack",
+            SourceName: "Slack");
 
     private static HuddlePopupViewModel Populated(Alert alert)
     {
         var vm = new HuddlePopupViewModel();
         vm.Populate(alert);
+        // The notification service resolves join targets via AlertLinks before showing the popup.
+        vm.JoinTargets = Links.Targets(alert);
         return vm;
     }
 

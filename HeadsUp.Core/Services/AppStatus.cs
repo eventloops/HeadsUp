@@ -1,55 +1,94 @@
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace HeadsUp.Services;
 
 /// <summary>
-/// Live, observable snapshot of what the app is doing right now - detection mode,
-/// connection state, and the signed-in account. A single instance is shared (as a
-/// singleton) between the detection source, which updates it, and the tray/dashboard
-/// UI, which binds to it. WPF marshals scalar property-change notifications to the UI
-/// thread, so background updates are safe.
+/// Live, observable snapshot of what the app is doing right now, aggregated across every
+/// connector. Each source has its own <see cref="SourceStatus"/> in <see cref="Sources"/>
+/// (a single instance is shared as a singleton); this type rolls those up into the
+/// convenience properties the tray, About window, and welcome hand-off still bind to as
+/// scalars, so single-connector UI keeps working while the dashboard can show per-source
+/// detail.
+///
+/// The <see cref="Sources"/> collection is seeded once at startup (on the UI thread) and
+/// not mutated afterwards — sources only update their own <see cref="SourceStatus"/>
+/// scalars, which WPF marshals safely from background threads.
 /// </summary>
 public sealed partial class AppStatus : ObservableObject
 {
-    /// <summary>True once a live connection to Slack is established and watching.</summary>
-    [ObservableProperty]
-    private bool _isConnected;
+    /// <summary>Per-connector status, one entry per registered source.</summary>
+    public ObservableCollection<SourceStatus> Sources { get; } = new();
 
-    /// <summary>Short human-readable state, e.g. "Watching for huddles" or "Signing in…".</summary>
-    [ObservableProperty]
-    private string _statusMessage = "Starting…";
-
-    /// <summary>Signed-in user handle (e.g. "cameron.lambert"), or null when unknown.</summary>
-    [ObservableProperty]
-    private string? _account;
-
-    /// <summary>Workspace/team name, or null when unknown.</summary>
-    [ObservableProperty]
-    private string? _team;
-
-    /// <summary>Detection mode in effect (SlackApi / SlackClientApi).</summary>
-    [ObservableProperty]
-    private string _mode = string.Empty;
-
-    /// <summary>Where credentials come from (e.g. "appsettings" or "WebView2 Slack session").</summary>
-    [ObservableProperty]
-    private string _credentialSource = string.Empty;
-
-    /// <summary>True while the embedded Slack sign-in window is up waiting for the user.</summary>
-    [ObservableProperty]
-    private bool _needsSignIn;
-
-    /// <summary>Convenience setter for the detection source to report a connection change.</summary>
-    public void SetConnection(bool connected, string message)
+    /// <summary>
+    /// Returns the status for <paramref name="sourceId"/>, creating and adding it if absent.
+    /// Prefer seeding sources at startup (see <see cref="Seed"/>) so this only reads.
+    /// </summary>
+    public SourceStatus GetOrAdd(string sourceId, string displayName)
     {
-        IsConnected = connected;
-        StatusMessage = message;
+        var existing = Sources.FirstOrDefault(s => s.SourceId == sourceId);
+        if (existing is not null)
+            return existing;
+
+        var status = new SourceStatus(sourceId, displayName);
+        status.PropertyChanged += OnSourceChanged;
+        Sources.Add(status);
+        RaiseAggregates();
+        return status;
     }
 
-    /// <summary>Records the authenticated identity after a successful auth check.</summary>
-    public void SetAccount(string? account, string? team)
+    /// <summary>Pre-registers a source (at startup) with its initial mode, so its card
+    /// shows immediately in a "Starting…" state before it connects.</summary>
+    public SourceStatus Seed(string sourceId, string displayName, string mode)
     {
-        Account = account;
-        Team = team;
+        var status = GetOrAdd(sourceId, displayName);
+        status.Mode = mode;
+        return status;
+    }
+
+    private SourceStatus? Primary => Sources.FirstOrDefault();
+
+    /// <summary>True when any source has a live connection.</summary>
+    public bool AnyConnected => Sources.Any(s => s.IsConnected);
+
+    /// <summary>Alias of <see cref="AnyConnected"/> for the single-dot tray/sidebar bindings.</summary>
+    public bool IsConnected => AnyConnected;
+
+    /// <summary>True while any source's embedded sign-in window is up.</summary>
+    public bool NeedsSignIn => Sources.Any(s => s.NeedsSignIn);
+
+    /// <summary>A one-line roll-up for the tray/sidebar: the sole source's message, or a count.</summary>
+    public string StatusMessage
+    {
+        get
+        {
+            if (Sources.Count == 0)
+                return "Starting…";
+            if (Sources.Count == 1)
+                return Sources[0].StatusMessage;
+            var connected = Sources.Count(s => s.IsConnected);
+            return $"{connected}/{Sources.Count} sources connected";
+        }
+    }
+
+    // Primary-source scalars, for UI that predates multi-source (About window, etc.).
+    public string? Account => Primary?.Account;
+    public string? Team => Primary?.Team;
+    public string Mode => Primary?.Mode ?? string.Empty;
+    public string CredentialSource => Primary?.CredentialSource ?? string.Empty;
+
+    private void OnSourceChanged(object? sender, PropertyChangedEventArgs e) => RaiseAggregates();
+
+    private void RaiseAggregates()
+    {
+        OnPropertyChanged(nameof(AnyConnected));
+        OnPropertyChanged(nameof(IsConnected));
+        OnPropertyChanged(nameof(NeedsSignIn));
+        OnPropertyChanged(nameof(StatusMessage));
+        OnPropertyChanged(nameof(Account));
+        OnPropertyChanged(nameof(Team));
+        OnPropertyChanged(nameof(Mode));
+        OnPropertyChanged(nameof(CredentialSource));
     }
 }

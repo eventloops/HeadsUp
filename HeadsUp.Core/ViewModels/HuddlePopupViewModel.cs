@@ -39,6 +39,13 @@ public sealed partial class HuddlePopupViewModel : ObservableObject
 
     private string _link = string.Empty;
 
+    /// <summary>
+    /// Ordered launch targets for the Join/Open button (connector deep link first, raw
+    /// link last), resolved by <see cref="AlertLinks"/> when the popup is built. Falls
+    /// back to the plain link if left unset (e.g. a bare --test-popup preview).
+    /// </summary>
+    public IReadOnlyList<string> JoinTargets { get; set; } = Array.Empty<string>();
+
     public event EventHandler? CloseRequested;
 
     public void Populate(Alert alert)
@@ -69,7 +76,8 @@ public sealed partial class HuddlePopupViewModel : ObservableObject
     [RelayCommand]
     private void JoinHuddle()
     {
-        AlertLauncher.Open(_link, Launch);
+        var targets = JoinTargets.Count > 0 ? JoinTargets : new[] { _link };
+        AlertLauncher.Open(targets, Launch);
         CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 

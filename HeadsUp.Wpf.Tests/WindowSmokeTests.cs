@@ -26,8 +26,8 @@ public class WindowSmokeTests
 
     private sealed class StubPriorityStore : IPrioritySettingsStore
     {
-        public IReadOnlyList<string> CurrentUserIds => Array.Empty<string>();
-        public Task SetAsync(IEnumerable<string> userIds, CancellationToken ct = default) => Task.CompletedTask;
+        public IReadOnlyList<string> CurrentUserIds(string sourceId) => Array.Empty<string>();
+        public Task SetAsync(string sourceId, IEnumerable<string> userIds, CancellationToken ct = default) => Task.CompletedTask;
     }
 
     private sealed class StubAlertStore : IAlertSettingsStore
@@ -94,9 +94,14 @@ public class WindowSmokeTests
         var snooze = new SnoozeService();
         snooze.SnoozeFor(TimeSpan.FromMinutes(30)); // exercise the muted banner too
 
+        var status = new AppStatus();
+        var slack = status.Seed("slack", "Slack", "SlackClientApi"); // renders one source card
+        slack.SetConnection(true, "Watching for huddles");
+        slack.SetAccount("cameron.lambert", "Procode");
+
+        var links = new AlertLinks(new[] { new SlackAlertLinkResolver() });
         var vm = new DashboardViewModel(
-            new AppStatus { Mode = "SlackClientApi" },
-            new StubDirectory(), new StubPriorityStore(), new StubAlertStore(), history, snooze);
+            status, new StubDirectory(), new StubPriorityStore(), new StubAlertStore(), history, snooze, links);
         return new DashboardWindow(vm);
     }
 

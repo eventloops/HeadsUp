@@ -33,8 +33,12 @@ or menu bar (macOS/Linux).
 
 ## How it connects to Slack
 
-Heads-Up needs to see your Slack activity. There are two routes — and today only the
-first is live.
+Heads-Up is built around **connectors** — each one watches a chat service and feeds the
+same alert pipeline. Slack is the first (and today the only) connector; the architecture
+is ready for others (Teams, Discord) to slot in alongside it without touching the core.
+You list the connectors to run in `appsettings.json` (see [Configure](#configure)).
+
+The Slack connector itself has two routes — and today only the first is live.
 
 ### `SlackClientApi` — the current prototype
 
@@ -62,14 +66,15 @@ no impersonating the official client, and the token survives rotation. Per-perso
 is just that one click; nothing is written up here yet because it's gated on the approval.
 
 Both routes share the same detection rules — huddles, mentions, DMs, keywords, and the
-alert toggles behave identically — so switching modes later changes nothing about what
-you're alerted on.
+alert toggles behave identically — so switching connectors later changes nothing about
+what you're alerted on.
 
-Pick the route in `appsettings.json` (`SlackClientApi` is the shipped default,
-since it's the only route that works today):
+Pick the route by listing it in `appsettings.json`. Each connector is one entry in
+`Detection:Connectors`; multiple entries run side by side. With none listed, Heads-Up
+defaults to a single `SlackClientApi` connector (the only route that works today):
 
 ```json
-{ "Detection": { "Mode": "SlackClientApi" } }
+{ "Detection": { "Connectors": [ { "Type": "SlackClientApi" } ] } }
 ```
 
 ---
@@ -132,7 +137,7 @@ workspace:
 
 ```json
 {
-  "Detection": { "Mode": "SlackClientApi" },
+  "Detection": { "Connectors": [ { "Type": "SlackClientApi" } ] },
   "SlackClient": {
     "CredentialSource": "WebView2",
     "WorkspaceUrl": "https://yourworkspace.slack.com"
@@ -150,7 +155,7 @@ provide the two values yourself:
 
 ```json
 {
-  "Detection": { "Mode": "SlackClientApi" },
+  "Detection": { "Connectors": [ { "Type": "SlackClientApi" } ] },
   "SlackClient": {
     "CredentialSource": "Config",
     "ClientToken": "xoxc-...",
@@ -189,15 +194,15 @@ Everything is in `appsettings.json` (in the install directory), and changes are 
     "DirectMessages": false,
     "Keywords": false,
     "KeywordList": [ "deploy", "prod down" ],
-    "MutedChannels": [ { "Id": "C0123456789", "Name": "random" } ]
+    "MutedChannels": [ { "Id": "C0123456789", "Name": "random", "Source": "slack" } ]
   },
   "Notification": {
     "PlaySound": true,
     "SoundFilePath": "",
     "ToastDurationSeconds": 15
   },
-  "Slack": {
-    "PriorityUsers": [ "U0123456789" ]
+  "Priority": {
+    "Users": [ { "Source": "slack", "Id": "U0123456789" } ]
   }
 }
 ```
@@ -210,10 +215,13 @@ Everything is in `appsettings.json` (in the install directory), and changes are 
   message) that trigger a keyword alert when `Keywords` is on. Editable as a
   comma-separated list in the dashboard.
 - **`MutedChannels`** — channels that never alert, whatever the kind. Easiest via the
-  dashboard's *Mute channel* button on a recent alert; stored here as `{ Id, Name }`.
+  dashboard's *Mute channel* button on a recent alert; stored here as `{ Id, Name, Source }`
+  (the `Source` namespaces the channel to its connector, so ids can't collide across
+  connectors — defaults to `slack`).
 - **Priority users** — easiest via the **dashboard** (tray → *Open dashboard* → search by
   name → *Add*); it saves back here for you. Priority users get the red header, green join
-  button, and incoming-call styling. `Slack:PriorityUsers` also accepts raw user IDs.
+  button, and incoming-call styling. Stored under `Priority:Users` as `{ Source, Id }`
+  entries, so each user is scoped to the connector they belong to.
 - **`SoundFilePath`** — optional custom sound (`.wav` on Windows; `.aiff`/`.wav` on
   macOS); leave empty for the system default.
 

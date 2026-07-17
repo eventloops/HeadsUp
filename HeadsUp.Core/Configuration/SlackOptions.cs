@@ -13,6 +13,5 @@ public sealed class SlackOptions
     /// </summary>
     public string UserToken { get; set; } = string.Empty;
 
-    /// <summary>User IDs that should trigger extra-prominent notifications.</summary>
-    public List<string> PriorityUsers { get; set; } = [];
+    // Priority users live in the namespaced PriorityOptions ("Priority:Users"), not here.
 }

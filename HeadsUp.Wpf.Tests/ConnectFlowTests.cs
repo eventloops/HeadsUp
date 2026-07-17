@@ -63,6 +63,9 @@ public class WelcomeViewModelTests
 
     private readonly StubAlertStore _store = new();
     private readonly AppStatus _status = new();
+    private readonly SourceStatus _slack;
+
+    public WelcomeViewModelTests() => _slack = _status.Seed("slack", "Slack", "SlackClientApi");
 
     private WelcomeViewModel Create() => new(_store, _status);
 
@@ -120,7 +123,7 @@ public class WelcomeViewModelTests
         vm.CloseRequested += (_, _) => close++;
 
         vm.ConnectCommand.Execute(null);
-        _status.SetConnection(true, "Watching for huddles");
+        _slack.SetConnection(true, "Watching for huddles");
 
         Assert.Equal(1, close);
     }
@@ -133,7 +136,7 @@ public class WelcomeViewModelTests
         vm.CloseRequested += (_, _) => close++;
 
         vm.ConnectCommand.Execute(null);
-        _status.NeedsSignIn = true;
+        _slack.NeedsSignIn = true;
 
         Assert.Equal(1, close);
     }
@@ -145,8 +148,8 @@ public class WelcomeViewModelTests
         var close = 0;
         vm.CloseRequested += (_, _) => close++;
 
-        _status.SetConnection(true, "up"); // not connecting yet
-        _status.NeedsSignIn = true;
+        _slack.SetConnection(true, "up"); // not connecting yet
+        _slack.NeedsSignIn = true;
 
         Assert.Equal(0, close);
     }
@@ -173,7 +176,7 @@ public class WelcomeViewModelTests
         vm.ConnectCommand.Execute(null);
 
         vm.Dispose();
-        _status.SetConnection(true, "up");
+        _slack.SetConnection(true, "up");
 
         Assert.Equal(0, close);
     }

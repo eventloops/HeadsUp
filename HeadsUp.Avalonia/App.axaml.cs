@@ -61,13 +61,12 @@ public partial class App : Application
             {
                 services.AddHeadsUpCore(ctx.Configuration);
 
-                // Detection source: the client-session prototype or the user's own Slack app.
+                // Detection sources: each configured connector runs side by side (legacy
+                // single-Mode configs resolve to one connector).
                 var detection = ctx.Configuration.GetSection(DetectionOptions.SectionName)
                     .Get<DetectionOptions>() ?? new();
-                if (detection.UseSlackClientApi)
-                    services.AddSlackClientApiHuddleDetection(ctx.Configuration);
-                else
-                    services.AddSlackApiHuddleDetection(ctx.Configuration);
+                foreach (var connector in detection.ResolveConnectors())
+                    services.AddConnector(ctx.Configuration, connector);
 
                 services.AddSingleton<INotificationService, AvaloniaNotificationService>();
             })

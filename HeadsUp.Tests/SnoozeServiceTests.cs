@@ -13,7 +13,7 @@ public class SnoozeServiceTests
         Assert.False(s.IsMuted(out var reason));
         Assert.Equal(string.Empty, reason);
         Assert.Null(s.SnoozedUntil);
-        Assert.False(s.SlackDndActive);
+        Assert.False(s.AnySourceDndActive);
     }
 
     [Fact]
@@ -53,21 +53,21 @@ public class SnoozeServiceTests
     }
 
     [Fact]
-    public void Slack_dnd_mutes_with_its_own_reason()
+    public void Source_dnd_mutes_with_the_sources_name_in_the_reason()
     {
         using var s = new SnoozeService();
-        s.SetSlackDnd(DateTimeOffset.Now.AddMinutes(30));
+        s.SetSourceDnd("slack", "Slack", DateTimeOffset.Now.AddMinutes(30));
 
         Assert.True(s.IsMuted(out var reason));
         Assert.Equal("Do Not Disturb is on in Slack", reason);
-        Assert.True(s.SlackDndActive);
+        Assert.True(s.AnySourceDndActive);
     }
 
     [Fact]
-    public void A_manual_snooze_reason_wins_over_slack_dnd()
+    public void A_manual_snooze_reason_wins_over_source_dnd()
     {
         using var s = new SnoozeService();
-        s.SetSlackDnd(DateTimeOffset.Now.AddMinutes(30));
+        s.SetSourceDnd("slack", "Slack", DateTimeOffset.Now.AddMinutes(30));
         s.SnoozeFor(TimeSpan.FromHours(1));
 
         Assert.True(s.IsMuted(out var reason));
@@ -82,8 +82,8 @@ public class SnoozeServiceTests
         var changed = 0;
         s.Changed += (_, _) => changed++;
 
-        s.SetSlackDnd(until);
-        s.SetSlackDnd(until); // unchanged
+        s.SetSourceDnd("slack", "Slack", until);
+        s.SetSourceDnd("slack", "Slack", until); // unchanged
 
         Assert.Equal(1, changed);
     }
@@ -92,11 +92,28 @@ public class SnoozeServiceTests
     public void Clearing_dnd_unmutes()
     {
         using var s = new SnoozeService();
-        s.SetSlackDnd(DateTimeOffset.Now.AddMinutes(30));
-        s.SetSlackDnd(null);
+        s.SetSourceDnd("slack", "Slack", DateTimeOffset.Now.AddMinutes(30));
+        s.SetSourceDnd("slack", "Slack", null);
 
-        Assert.False(s.SlackDndActive);
+        Assert.False(s.AnySourceDndActive);
         Assert.False(s.IsMuted(out _));
+    }
+
+    [Fact]
+    public void Dnd_is_tracked_per_source_and_clearing_one_leaves_the_other()
+    {
+        using var s = new SnoozeService();
+        s.SetSourceDnd("slack", "Slack", DateTimeOffset.Now.AddMinutes(30));
+        s.SetSourceDnd("teams", "Teams", DateTimeOffset.Now.AddMinutes(30));
+
+        // Clearing Slack still leaves Teams DND active and muting.
+        s.SetSourceDnd("slack", "Slack", null);
+        Assert.True(s.AnySourceDndActive);
+        Assert.True(s.IsMuted(out var reason));
+        Assert.Equal("Do Not Disturb is on in Teams", reason);
+
+        s.SetSourceDnd("teams", "Teams", null);
+        Assert.False(s.AnySourceDndActive);
     }
 
     [Fact]

@@ -8,15 +8,17 @@ public sealed class DetectionOptions
     public const string SlackClientApi = "SlackClientApi";
 
     /// <summary>
-    /// How activity is detected:
-    /// "SlackClientApi" (default) - the current prototype: a browser/desktop session (xoxc
-    ///   token + "d" cookie, obtained via an embedded Slack sign-in); no Slack app and no
-    ///   admin approval, but unofficial and undocumented. Cross-platform. The default because
-    ///   it is the only route that works today.
-    /// "SlackApi" - the goal: a proper admin-approved Slack app using your own OAuth
-    ///   tokens. Robust and sanctioned; becomes the default once app permission is granted.
+    /// The connectors to run, side by side. Each entry's <see cref="ConnectorOptions.Type"/> is
+    /// a route name:
+    /// "SlackClientApi" - the current prototype: a browser/desktop session (xoxc token + "d"
+    ///   cookie, obtained via an embedded Slack sign-in); no Slack app and no admin approval,
+    ///   but unofficial and undocumented. Cross-platform.
+    /// "SlackApi" - the goal: a proper admin-approved Slack app using your own OAuth tokens.
+    ///   Robust and sanctioned; becomes the default once app permission is granted.
+    /// When left empty, <see cref="ResolveConnectors"/> defaults to a single SlackClientApi
+    /// connector so the app works out of the box.
     /// </summary>
-    public string Mode { get; set; } = SlackClientApi;
+    public List<ConnectorOptions> Connectors { get; set; } = [];
 
     /// <summary>
     /// Debug/testing aid: when true, huddles you start yourself also raise a notification
@@ -25,6 +27,12 @@ public sealed class DetectionOptions
     /// </summary>
     public bool NotifyOwnHuddles { get; set; }
 
-    public bool UseSlackClientApi =>
-        string.Equals(Mode, SlackClientApi, StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// The effective connectors to run: the configured <see cref="Connectors"/>, or a single
+    /// default SlackClientApi connector when none are configured.
+    /// </summary>
+    public IReadOnlyList<ConnectorOptions> ResolveConnectors() =>
+        Connectors.Count > 0
+            ? Connectors
+            : [new ConnectorOptions { Type = SlackClientApi }];
 }

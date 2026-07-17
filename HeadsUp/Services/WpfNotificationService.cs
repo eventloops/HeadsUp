@@ -17,6 +17,7 @@ namespace HeadsUp.Services;
 public sealed class WpfNotificationService : INotificationService
 {
     private readonly IOptionsMonitor<NotificationOptions> _options;
+    private readonly AlertLinks _links;
     private readonly ILogger<WpfNotificationService> _logger;
     private readonly Dispatcher _dispatcher;
 
@@ -26,9 +27,11 @@ public sealed class WpfNotificationService : INotificationService
 
     public WpfNotificationService(
         IOptionsMonitor<NotificationOptions> options,
+        AlertLinks links,
         ILogger<WpfNotificationService> logger)
     {
         _options = options;
+        _links = links;
         _logger = logger;
         _dispatcher = Application.Current.Dispatcher;
     }
@@ -54,6 +57,7 @@ public sealed class WpfNotificationService : INotificationService
         var options = _options.CurrentValue;
         var vm = new HuddlePopupViewModel();
         vm.Populate(huddle);
+        vm.JoinTargets = _links.Targets(huddle);
 
         var window = new HuddlePopupWindow
         {

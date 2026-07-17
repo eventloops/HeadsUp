@@ -30,7 +30,7 @@ public class ServiceCollectionExtensionsTests
     [Fact]
     public void Core_registers_options_status_and_stores()
     {
-        var config = Config(("Detection:Mode", "SlackClientApi"), ("Alerts:Keywords", "true"));
+        var config = Config(("Detection:Connectors:0:Type", "SlackClientApi"), ("Alerts:Keywords", "true"));
         using var provider = BuildClientApiProvider(config);
 
         Assert.Equal("SlackClientApi", provider.GetRequiredService<AppStatus>().Mode);
@@ -44,7 +44,7 @@ public class ServiceCollectionExtensionsTests
     [Fact]
     public void Client_api_mode_wires_the_web_source_as_singleton_source_and_hosted_service()
     {
-        using var provider = BuildClientApiProvider(Config(("Detection:Mode", "SlackClientApi")));
+        using var provider = BuildClientApiProvider(Config(("Detection:Connectors:0:Type", "SlackClientApi")));
 
         var source = provider.GetRequiredService<IAlertSource>();
         Assert.IsType<SlackWebHuddleSource>(source);
@@ -82,7 +82,7 @@ public class ServiceCollectionExtensionsTests
         services.AddLogging();
         services.AddSingleton<INotificationService, RecordingNotificationService>();
         var config = Config(
-            ("Detection:Mode", "SlackApi"),
+            ("Detection:Connectors:0:Type", "SlackApi"),
             ("Slack:AppToken", "xapp-1"),
             ("Slack:UserToken", "xoxp-1"));
         services.AddHeadsUpCore(config);

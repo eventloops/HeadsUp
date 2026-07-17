@@ -99,6 +99,9 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
 
     public string SourceDescription => "WebView2 Slack session";
 
+    /// <summary>The Slack source's status entry — this provider only ever drives Slack.</summary>
+    private SourceStatus SlackStatus => _status.GetOrAdd(SlackSource.Id, SlackSource.Name);
+
     public async Task<SlackCredentials?> GetCredentialsAsync(bool forceRefresh, CancellationToken ct)
     {
         // Hold back until the app opens the gate — on first run, after the user clicks
@@ -149,7 +152,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
                 CloseSplash();
                 ShowWebViewOnScreen();
                 _signInVisible = true;
-                _status.NeedsSignIn = true; // lets the welcome hand off to the sign-in window
+                SlackStatus.NeedsSignIn = true; // lets the welcome hand off to the sign-in window
                 _logger.LogInformation(
                     "Complete the Slack sign-in in the window (SSO included). It closes itself once "
                     + "your session is read.");
@@ -157,7 +160,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
                 // window without re-navigating, so a slow sign-in is never interrupted.
                 token = await PollForTokenAsync(SignInPollTimeout, ct);
                 _signInVisible = false;
-                _status.NeedsSignIn = false;
+                SlackStatus.NeedsSignIn = false;
                 if (!_cancelled)
                 {
                     HideWebView();
@@ -170,7 +173,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
             {
                 _logger.LogInformation("Slack sign-in was closed; not connected. Use tray → Connect to retry.");
                 CloseSplash();
-                _status.SetConnection(false, "Not connected");
+                SlackStatus.SetConnection(false, "Not connected");
                 _connectionGate.Reset(); // hold until the user asks to connect again
                 return null;
             }

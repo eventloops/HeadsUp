@@ -18,13 +18,14 @@ public class HuddleNotificationCoordinatorTests
         IsPriorityUser: false,
         OccurredAt: DateTimeOffset.Now);
 
-    private readonly FakeAlertSource _source = new();
+    private readonly FakeAlertSource _source = new("slack", "Slack");
     private readonly RecordingNotificationService _notifications = new();
     private readonly AlertHistory _history = new();
     private readonly SnoozeService _gate = new();
 
-    private HuddleNotificationCoordinator CreateCoordinator() => new(
-        _source, _notifications, _history, _gate, NullLogger<HuddleNotificationCoordinator>.Instance);
+    private HuddleNotificationCoordinator CreateCoordinator(params IAlertSource[] sources) => new(
+        sources.Length > 0 ? sources : new IAlertSource[] { _source },
+        _notifications, _history, _gate, NullLogger<HuddleNotificationCoordinator>.Instance);
 
     [Fact]
     public async Task Alerts_flow_from_source_to_notification_service_and_history()
@@ -36,8 +37,35 @@ public class HuddleNotificationCoordinatorTests
             var alert = SomeAlert();
             _source.Raise(alert);
 
-            Assert.Same(alert, await _notifications.FirstAlert);
-            Assert.Same(alert, Assert.Single(_history.Recent)); // also recorded
+            var shown = await _notifications.FirstAlert;
+            Assert.Equal(alert.InitiatorUserId, shown.InitiatorUserId);
+            Assert.Equal("slack", shown.SourceId);      // stamped by the coordinator
+            Assert.Equal("Slack", shown.SourceName);
+            Assert.Equal("slack", Assert.Single(_history.Recent).SourceId); // also recorded, stamped
+        }
+        finally
+        {
+            await coordinator.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task Alerts_from_multiple_sources_all_flow_through_stamped_with_their_identity()
+    {
+        var slack = new FakeAlertSource("slack", "Slack");
+        var teams = new FakeAlertSource("teams", "Teams");
+        var coordinator = CreateCoordinator(slack, teams);
+
+        await coordinator.StartAsync(CancellationToken.None);
+        try
+        {
+            slack.Raise(SomeAlert());
+            teams.Raise(SomeAlert());
+            await Task.Delay(150);
+
+            Assert.Equal(2, _notifications.Shown.Count);
+            Assert.Contains(_notifications.Shown, a => a.SourceId == "slack" && a.SourceName == "Slack");
+            Assert.Contains(_notifications.Shown, a => a.SourceId == "teams" && a.SourceName == "Teams");
         }
         finally
         {
@@ -61,7 +89,7 @@ public class HuddleNotificationCoordinatorTests
             var alert = SomeAlert();
             _source.Raise(alert);
 
-            Assert.Same(alert, await _notifications.FirstAlert);
+            Assert.Equal(alert.InitiatorUserId, (await _notifications.FirstAlert).InitiatorUserId);
             Assert.Equal(2, _history.Recent.Count); // both were recorded regardless of the fault
         }
         finally
@@ -100,12 +128,12 @@ public class HuddleNotificationCoordinatorTests
             await Task.Delay(150); // let the fire-and-forget path settle
 
             Assert.Empty(_notifications.Shown);                 // popup suppressed
-            Assert.Same(alert, Assert.Single(_history.Recent)); // but still recorded
+            Assert.Equal(alert.InitiatorUserId, Assert.Single(_history.Recent).InitiatorUserId); // but still recorded
 
             // Resuming lets the next alert through.
             _gate.Resume();
             _source.Raise(alert);
-            Assert.Same(alert, await _notifications.FirstAlert);
+            Assert.Equal(alert.InitiatorUserId, (await _notifications.FirstAlert).InitiatorUserId);
         }
         finally
         {

@@ -9,7 +9,7 @@ public enum AlertKind
     Keyword
 }
 
-/// <summary>A detected piece of Slack activity worth surfacing as a prominent alert.</summary>
+/// <summary>A detected piece of activity worth surfacing as a prominent alert.</summary>
 public sealed record Alert(
     string InitiatorUserId,
     string InitiatorDisplayName,
@@ -21,4 +21,9 @@ public sealed record Alert(
     bool IsPriorityUser,
     DateTimeOffset OccurredAt,
     AlertKind Kind = AlertKind.Huddle,
-    string Preview = "");
+    string Preview = "",
+    // Which connector produced this alert. Stamped by the coordinator on relay from
+    // the raising IAlertSource, so sources don't each set it; empty for a bare alert
+    // built outside the pipeline (e.g. a --test-popup preview).
+    string SourceId = "",
+    string SourceName = "");

@@ -23,10 +23,22 @@ public static class ServiceCollectionExtensions
         services.Configure<NotificationOptions>(configuration.GetSection(NotificationOptions.SectionName));
         services.Configure<DetectionOptions>(configuration.GetSection(DetectionOptions.SectionName));
         services.Configure<AlertOptions>(configuration.GetSection(AlertOptions.SectionName));
+        services.Configure<PriorityOptions>(configuration.GetSection(PriorityOptions.SectionName));
 
-        // Shared live status the tray + dashboard bind to; the detection source updates it.
-        var detection = configuration.GetSection(DetectionOptions.SectionName).Get<DetectionOptions>() ?? new();
-        services.AddSingleton(new AppStatus { Mode = detection.Mode, StatusMessage = "Starting…" });
+        // Shared live status the tray + dashboard bind to; each detection source updates its
+        // own SourceStatus entry. Seeded once, per resolved connector, so every configured
+        // source shows a card in a "Starting…" state before it connects.
+        services.AddSingleton(_ =>
+        {
+            var detection = configuration.GetSection(DetectionOptions.SectionName).Get<DetectionOptions>() ?? new();
+            var status = new AppStatus();
+            foreach (var connector in detection.ResolveConnectors())
+            {
+                var (id, name) = ConnectorIdentity(connector.Type);
+                status.Seed(id, name, connector.Type);
+            }
+            return status;
+        });
 
         // Persist dashboard edits back to appsettings.Local.json (hot-reloaded).
         services.AddSingleton<IPrioritySettingsStore, JsonPrioritySettingsStore>();
@@ -34,6 +46,10 @@ public static class ServiceCollectionExtensions
 
         // In-memory log of surfaced alerts, shown in the dashboard's "Recent alerts".
         services.AddSingleton<IAlertHistory, AlertHistory>();
+
+        // Resolves per-connector deep links for opening an alert; connectors contribute
+        // their own IAlertLinkResolver. Falls back to the raw link when none match.
+        services.AddSingleton<AlertLinks>();
 
         // Snooze / Slack-DND gate. Concrete registered too: the tray drives snooze and the
         // DND poller feeds it, while the coordinator only reads it through IAlertGate.
@@ -43,6 +59,36 @@ public static class ServiceCollectionExtensions
         services.AddHostedService<HuddleNotificationCoordinator>();
 
         return services;
+    }
+
+    /// <summary>
+    /// Registers the detection source(s) for a connector by its route type. Slack routes
+    /// map to the Socket Mode or client-session source; unknown types are ignored (logged
+    /// by the caller). Platform-specific extras (e.g. the WPF WebView2 credential provider)
+    /// are registered by the head before calling this.
+    /// </summary>
+    public static IServiceCollection AddConnector(
+        this IServiceCollection services, IConfiguration configuration, ConnectorOptions connector)
+    {
+        if (string.Equals(connector.Type, DetectionOptions.SlackClientApi, StringComparison.OrdinalIgnoreCase))
+            return services.AddSlackClientApiHuddleDetection(configuration);
+
+        if (string.Equals(connector.Type, DetectionOptions.SlackApi, StringComparison.OrdinalIgnoreCase))
+            return services.AddSlackApiHuddleDetection(configuration);
+
+        // Unknown connector type: leave it unregistered rather than fail startup.
+        return services;
+    }
+
+    /// <summary>Maps a connector route type to its source identity. Both Slack routes are "slack".</summary>
+    private static (string Id, string Name) ConnectorIdentity(string type)
+    {
+        if (string.Equals(type, DetectionOptions.SlackClientApi, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(type, DetectionOptions.SlackApi, StringComparison.OrdinalIgnoreCase))
+            return (SlackSource.Id, SlackSource.Name);
+
+        // Future connectors: fall back to the route type as both id and display name.
+        return (type.ToLowerInvariant(), type);
     }
 
     /// <summary>
@@ -64,6 +110,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<SlackHuddleMonitor>();
         services.AddSingleton<IAlertSource>(sp => sp.GetRequiredService<SlackHuddleMonitor>());
         services.AddHostedService(sp => sp.GetRequiredService<SlackHuddleMonitor>());
+        services.AddSingleton<IAlertLinkResolver, SlackAlertLinkResolver>();
 
         return services;
     }
@@ -90,6 +137,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<SlackWebHuddleSource>();
         services.AddSingleton<IAlertSource>(sp => sp.GetRequiredService<SlackWebHuddleSource>());
         services.AddHostedService(sp => sp.GetRequiredService<SlackWebHuddleSource>());
+        services.AddSingleton<IAlertLinkResolver, SlackAlertLinkResolver>();
 
         return services;
     }

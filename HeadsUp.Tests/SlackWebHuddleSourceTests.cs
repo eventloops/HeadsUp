@@ -29,9 +29,9 @@ public class SlackWebHuddleSourceFrameTests
     {
         var source = new SlackWebHuddleSource(
             new StaticCredentialProvider(null),
-            new StaticMonitor<SlackOptions>(new() { PriorityUsers = ["UPRIO"] }),
             new StaticMonitor<DetectionOptions>(_detection),
             new StaticMonitor<AlertOptions>(_alerts),
+            new StaticMonitor<PriorityOptions>(new() { Users = { new PriorityUser { Source = "slack", Id = "UPRIO" } } }),
             new SnoozeService(),
             new AppStatus(),
             NullLogger<SlackWebHuddleSource>.Instance);
@@ -319,9 +319,9 @@ public class SlackWebHuddleSourceIntegrationTests
         status = new AppStatus();
         return new SlackWebHuddleSource(
             creds,
-            new StaticMonitor<SlackOptions>(new()),
             new StaticMonitor<DetectionOptions>(new()),
             new StaticMonitor<AlertOptions>(new()),
+            new StaticMonitor<PriorityOptions>(new()),
             snooze ?? new SnoozeService(),
             status,
             NullLogger<SlackWebHuddleSource>.Instance);
@@ -460,7 +460,7 @@ public class SlackWebHuddleSourceIntegrationTests
 
             // The poller picks up Slack DND and mutes the gate.
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-            while (!snooze.SlackDndActive && DateTime.UtcNow < deadline)
+            while (!snooze.AnySourceDndActive && DateTime.UtcNow < deadline)
                 await Task.Delay(25);
             Assert.True(snooze.IsMuted(out var reason));
             Assert.Equal("Do Not Disturb is on in Slack", reason);
@@ -471,7 +471,7 @@ public class SlackWebHuddleSourceIntegrationTests
         }
 
         // Disconnecting clears the DND-based mute so it can't get stuck on.
-        Assert.False(snooze.SlackDndActive);
+        Assert.False(snooze.AnySourceDndActive);
     }
 
     [Fact]
@@ -503,9 +503,9 @@ public class SlackWebHuddleSourceIntegrationTests
         var status = new AppStatus();
         var source = new SlackWebHuddleSource(
             new StaticCredentialProvider(null),
-            new StaticMonitor<SlackOptions>(new()),
             new StaticMonitor<DetectionOptions>(new()),
             new StaticMonitor<AlertOptions>(new()),
+            new StaticMonitor<PriorityOptions>(new()),
             new SnoozeService(),
             status,
             NullLogger<SlackWebHuddleSource>.Instance);

@@ -21,6 +21,8 @@ public class SlackHuddleMonitorTests
 
     private SlackOptions _slackOptions = new() { AppToken = "xapp-1", UserToken = "xoxp-1" };
     private DetectionOptions _detectionOptions = new();
+    private PriorityOptions _priorityOptions = new();
+    private readonly AppStatus _status = new();
     private AlertOptions _alertOptions = new()
     {
         Huddles = true,
@@ -36,6 +38,8 @@ public class SlackHuddleMonitorTests
         new StaticMonitor<SlackOptions>(_slackOptions),
         new StaticMonitor<DetectionOptions>(_detectionOptions),
         new StaticMonitor<AlertOptions>(_alertOptions),
+        new StaticMonitor<PriorityOptions>(_priorityOptions),
+        _status,
         NullLogger<SlackHuddleMonitor>.Instance);
 
     /// <summary>Creates a monitor that has "connected": auth.test resolved self/team ids.</summary>
@@ -273,7 +277,7 @@ public class SlackHuddleMonitorTests
     [Fact]
     public async Task Priority_users_are_flagged()
     {
-        _slackOptions.PriorityUsers = ["u2"]; // case-insensitive match against U2
+        _priorityOptions = new PriorityOptions { Users = { new PriorityUser { Source = "slack", Id = "u2" } } }; // case-insensitive match against U2
         var monitor = await StartedMonitor();
         var waiter = new AlertWaiter(monitor);
 

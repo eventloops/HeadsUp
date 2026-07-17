@@ -40,9 +40,9 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
     internal TimeSpan _dndPollInterval = TimeSpan.FromSeconds(60);
 
     private readonly ISlackCredentialProvider _credentials;
-    private readonly IOptionsMonitor<SlackOptions> _slackOptions;
     private readonly IOptionsMonitor<DetectionOptions> _detectionOptions;
     private readonly IOptionsMonitor<AlertOptions> _alertOptions;
+    private readonly IOptionsMonitor<PriorityOptions> _priorityOptions;
     private readonly SnoozeService _snooze;
     private readonly AppStatus _status;
     private readonly ILogger<SlackWebHuddleSource> _logger;
@@ -56,21 +56,27 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
     internal string? _selfUserId;
     private int _messageId;
 
+    public string SourceId => SlackSource.Id;
+    public string SourceName => SlackSource.Name;
+
+    /// <summary>This source's own status entry (created on first use if not pre-seeded).</summary>
+    private SourceStatus Status => _status.GetOrAdd(SourceId, SourceName);
+
     public event EventHandler<Alert>? AlertRaised;
 
     public SlackWebHuddleSource(
         ISlackCredentialProvider credentials,
-        IOptionsMonitor<SlackOptions> slackOptions,
         IOptionsMonitor<DetectionOptions> detectionOptions,
         IOptionsMonitor<AlertOptions> alertOptions,
+        IOptionsMonitor<PriorityOptions> priorityOptions,
         SnoozeService snooze,
         AppStatus status,
         ILogger<SlackWebHuddleSource> logger)
     {
         _credentials = credentials;
-        _slackOptions = slackOptions;
         _detectionOptions = detectionOptions;
         _alertOptions = alertOptions;
+        _priorityOptions = priorityOptions;
         _snooze = snooze;
         _status = status;
         _logger = logger;
@@ -78,7 +84,8 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _status.CredentialSource = _credentials.SourceDescription;
+        Status.Mode = DetectionOptions.SlackClientApi;
+        Status.CredentialSource = _credentials.SourceDescription;
 
         // Outer loop: (re)acquire credentials, authenticate, then run the socket until it
         // drops. A missing or rejected credential forces a refresh on the next round, which
@@ -99,7 +106,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
             {
                 // A dropped socket lands here; keep the same creds and let the next
                 // auth.test decide whether they have actually gone stale.
-                _status.SetConnection(false, "Reconnecting…");
+                Status.SetConnection(false, "Reconnecting…");
                 _logger.LogWarning(ex, "Slack client connection ended; retrying in {Delay}s.",
                     _reconnectDelay.TotalSeconds);
                 refreshNext = false;
@@ -126,7 +133,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
         var creds = await _credentials.GetCredentialsAsync(forceRefresh, stoppingToken);
         if (creds is null)
         {
-            _status.SetConnection(false, "Waiting for sign-in…");
+            Status.SetConnection(false, "Waiting for sign-in…");
             _logger.LogWarning(
                 "No Slack credentials available yet from {Source}; waiting {Delay}s before retry.",
                 _credentials.SourceDescription, _reconnectDelay.TotalSeconds);
@@ -140,7 +147,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
         var auth = await _client.AuthTestAsync(stoppingToken);
         if (!auth.Bool("ok"))
         {
-            _status.SetConnection(false, "Reconnecting…");
+            Status.SetConnection(false, "Reconnecting…");
             _logger.LogWarning(
                 "Slack auth.test failed: {Error}. Refreshing credentials from {Source} and retrying.",
                 auth.Str("error") ?? "unknown", _credentials.SourceDescription);
@@ -149,7 +156,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
 
         _teamId = auth.Str("team_id");
         _selfUserId = auth.Str("user_id");
-        _status.SetAccount(auth.Str("user"), auth.Str("team"));
+        Status.SetAccount(auth.Str("user"), auth.Str("team"));
         _logger.LogInformation(
             "Slack client session OK: authenticated as {User} in team {Team}.",
             auth.Str("user"), auth.Str("team"));
@@ -178,7 +185,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
         ws.Options.SetRequestHeader("Origin", "https://app.slack.com");
         await ws.ConnectAsync(new Uri(url), stoppingToken);
         _logger.LogInformation("Connected to Slack real-time WebSocket. Watching for huddles.");
-        _status.SetConnection(true, "Watching for huddles");
+        Status.SetConnection(true, "Watching for huddles");
 
         using var sessionCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         var pingTask = KeepAliveAsync(ws, sessionCts.Token);
@@ -192,7 +199,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
         {
             sessionCts.Cancel();
             try { await Task.WhenAll(pingTask, dndTask); } catch { /* teardown is best effort */ }
-            _snooze.SetSlackDnd(null); // don't keep suppressing on stale DND once disconnected
+            _snooze.SetSourceDnd(SourceId, SourceName, null); // don't keep suppressing on stale DND once disconnected
         }
     }
 
@@ -218,7 +225,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
         {
             var dnd = await _client!.DndInfoAsync(ct);
             if (dnd.Bool("ok"))
-                _snooze.SetSlackDnd(DndUntil(dnd));
+                _snooze.SetSourceDnd(SourceId, SourceName, DndUntil(dnd));
         }
         catch (Exception ex)
         {
@@ -303,7 +310,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
 
         if (AlertClassifier.IsHuddleSubtype(subtype))
         {
-            if (alerts.Huddles && !AlertClassifier.IsChannelMuted(root.Str("channel") ?? string.Empty, alerts))
+            if (alerts.Huddles && !AlertClassifier.IsChannelMuted(root.Str("channel") ?? string.Empty, SourceId, alerts))
                 HandleHuddle(root, subtype);
             return;
         }
@@ -344,7 +351,9 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
         if (user.Equals(_selfUserId, StringComparison.OrdinalIgnoreCase))
             return;
 
-        if (AlertClassifier.ClassifyMessage(text, channel, _selfUserId, alerts) is not { } kind)
+        var isMention = SlackMessageParser.IsMention(text, _selfUserId);
+        var isDm = SlackMessageParser.IsDirectMessage(channel);
+        if (AlertClassifier.Classify(isMention, isDm, text, channel, SourceId, alerts) is not { } kind)
             return;
 
         _logger.LogInformation("{Kind} alert: user={User} channel={Channel}.", kind, user, channel);
@@ -357,7 +366,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
         {
             var (displayName, avatarUrl) = await ResolveUserAsync(userId);
 
-            var isDm = channelId.StartsWith('D');
+            var isDm = SlackMessageParser.IsDirectMessage(channelId);
             var channelName = channelId;
             if (!isDm)
             {
@@ -370,7 +379,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
                 catch (Exception ex) { _logger.LogWarning(ex, "Could not resolve channel {Channel}.", channelId); }
             }
 
-            var isPriority = _slackOptions.CurrentValue.PriorityUsers.Contains(userId, StringComparer.OrdinalIgnoreCase);
+            var isPriority = _priorityOptions.CurrentValue.IsPriority(SourceId, userId);
             var link = string.IsNullOrEmpty(_teamId)
                 ? $"slack://channel?id={channelId}"
                 : $"https://app.slack.com/client/{_teamId}/{channelId}";
@@ -386,7 +395,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
                 IsPriorityUser: isPriority,
                 OccurredAt: DateTimeOffset.Now,
                 Kind: kind,
-                Preview: AlertClassifier.Preview(text)));
+                Preview: SlackMessageParser.Preview(text)));
         }
         catch (Exception ex)
         {
@@ -446,7 +455,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
             // Resolve the conversation first: it doubles as the membership gate.
             // DMs and group DMs are the user's by definition; fail open on error.
             string channelName = channelId;
-            bool isDm = channelId.StartsWith('D');
+            bool isDm = SlackMessageParser.IsDirectMessage(channelId);
             try
             {
                 var conv = await _client!.ConversationInfoAsync(channelId);
@@ -470,7 +479,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
             }
 
             var (displayName, avatarUrl) = await ResolveUserAsync(userId);
-            var isPriority = _slackOptions.CurrentValue.PriorityUsers.Contains(userId, StringComparer.OrdinalIgnoreCase);
+            var isPriority = _priorityOptions.CurrentValue.IsPriority(SourceId, userId);
 
             // With a team id Slack can deep-link straight into the huddle;
             // otherwise fall back to opening the channel.

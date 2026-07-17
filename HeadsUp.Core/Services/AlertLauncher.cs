@@ -1,13 +1,12 @@
 using System.Diagnostics;
-using System.Text.RegularExpressions;
 
 namespace HeadsUp.Services;
 
 /// <summary>
-/// Opens an alert's target — preferring the desktop Slack app (a <c>slack://</c> deep
-/// link) over bouncing through the browser, and falling back to the original web link
-/// if a launch fails (e.g. the desktop app isn't installed). Shared by the huddle popup
-/// and the dashboard's alert history.
+/// Launches an alert's target — trying each candidate in order (a connector's deep link
+/// first, the raw web link last) and stopping at the first the OS accepts. Target
+/// resolution is connector-specific and lives in <see cref="AlertLinks"/>; this type only
+/// performs the launch. Shared by the huddle popup and the dashboard's alert history.
 /// </summary>
 public static class AlertLauncher
 {
@@ -19,9 +18,9 @@ public static class AlertLauncher
     };
 
     /// <summary>Tries each target in order until <paramref name="launch"/> handles one.</summary>
-    public static void Open(string link, Func<string, bool> launch)
+    public static void Open(IEnumerable<string> targets, Func<string, bool> launch)
     {
-        foreach (var target in Targets(link))
+        foreach (var target in targets)
         {
             try
             {
@@ -32,17 +31,7 @@ public static class AlertLauncher
         }
     }
 
-    /// <summary>Desktop-app deep link first, then the original (web) link as a fallback.</summary>
-    public static IEnumerable<string> Targets(string link)
-    {
-        var huddle = Regex.Match(link, @"app\.slack\.com/huddle/(?<team>[^/]+)/(?<channel>[^/?#]+)");
-        if (huddle.Success)
-            yield return $"slack://huddle?team={huddle.Groups["team"].Value}&id={huddle.Groups["channel"].Value}";
-
-        var channel = Regex.Match(link, @"app\.slack\.com/client/(?<team>[^/]+)/(?<channel>[^/?#]+)");
-        if (channel.Success)
-            yield return $"slack://channel?team={channel.Groups["team"].Value}&id={channel.Groups["channel"].Value}";
-
-        yield return link;
-    }
+    /// <summary>Convenience for a single raw link (no connector-specific deep links).</summary>
+    public static void Open(string link, Func<string, bool> launch) =>
+        Open(new[] { link }, launch);
 }

@@ -18,6 +18,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
     private readonly IAlertSettingsStore _alertStore;
     private readonly IAlertHistory _history;
     private readonly SnoozeService _snooze;
+    private readonly AlertLinks _links;
     // Captured at construction (the UI thread in the app; null under test) so history
     // changes raised on a background thread marshal back before touching the collection.
     private readonly SynchronizationContext? _sync = SynchronizationContext.Current;
@@ -95,7 +96,8 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
         IPrioritySettingsStore priorityStore,
         IAlertSettingsStore alertStore,
         IAlertHistory history,
-        SnoozeService snooze)
+        SnoozeService snooze,
+        AlertLinks links)
     {
         Status = status;
         _directory = directory;
@@ -103,6 +105,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
         _alertStore = alertStore;
         _history = history;
         _snooze = snooze;
+        _links = links;
         LoadAlerts();
 
         RefreshHistory();
@@ -151,7 +154,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
     private void OpenAlert(AlertHistoryItem? item)
     {
         if (item is not null)
-            AlertLauncher.Open(item.Alert.Link, Launch);
+            AlertLauncher.Open(_links.Targets(item.Alert), Launch);
     }
 
     [RelayCommand]
@@ -167,11 +170,16 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task MuteChannel(AlertHistoryItem? item)
     {
-        if (item is null || !item.CanMute ||
-            MutedChannels.Any(m => string.Equals(m.Id, item.ChannelId, StringComparison.OrdinalIgnoreCase)))
+        if (item is null || !item.CanMute)
             return;
 
-        MutedChannels.Add(new MutedChannel { Id = item.ChannelId, Name = item.ChannelName });
+        var source = string.IsNullOrEmpty(item.SourceId) ? SlackSource.Id : item.SourceId;
+        if (MutedChannels.Any(m =>
+                string.Equals(m.Id, item.ChannelId, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(m.Source, source, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        MutedChannels.Add(new MutedChannel { Id = item.ChannelId, Name = item.ChannelName, Source = source });
         await SaveAlertsAsync();
     }
 
@@ -182,7 +190,8 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
             return;
 
         var existing = MutedChannels.FirstOrDefault(m =>
-            string.Equals(m.Id, channel.Id, StringComparison.OrdinalIgnoreCase));
+            string.Equals(m.Id, channel.Id, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(m.Source, channel.Source, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
             MutedChannels.Remove(existing);
 
@@ -206,7 +215,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
         KeywordsText = string.Join(", ", a.KeywordList);
         MutedChannels.Clear();
         foreach (var channel in a.MutedChannels)
-            MutedChannels.Add(new MutedChannel { Id = channel.Id, Name = channel.Name });
+            MutedChannels.Add(new MutedChannel { Id = channel.Id, Name = channel.Name, Source = channel.Source });
         _loadingAlerts = false;
     }
 
@@ -253,7 +262,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
             _allUsers = await _directory.GetUsersAsync();
 
             PriorityUsers.Clear();
-            foreach (var id in _priorityStore.CurrentUserIds)
+            foreach (var id in _priorityStore.CurrentUserIds(SlackSource.Id))
             {
                 var match = _allUsers.FirstOrDefault(u => u.Id == id);
                 PriorityUsers.Add(match ?? new DirectoryUser(id, id, null, null));
@@ -321,7 +330,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
     {
         try
         {
-            await _priorityStore.SetAsync(PriorityUsers.Select(u => u.Id));
+            await _priorityStore.SetAsync(SlackSource.Id, PriorityUsers.Select(u => u.Id));
         }
         catch (Exception ex)
         {

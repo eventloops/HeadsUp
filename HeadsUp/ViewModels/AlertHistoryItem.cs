@@ -37,6 +37,7 @@ public sealed class AlertHistoryItem
     public bool CanMute { get; }
     public string ChannelId => Alert.ChannelId;
     public string ChannelName => Alert.ChannelName;
+    public string SourceId => Alert.SourceId;
 
     /// <summary>Relative time for recent items ("2m ago"), a clock time for older ones.</summary>
     private static string FormatTime(DateTimeOffset when)

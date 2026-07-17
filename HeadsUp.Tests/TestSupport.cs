@@ -12,9 +12,17 @@ internal sealed class StaticMonitor<T>(T value) : IOptionsMonitor<T>
     public IDisposable? OnChange(Action<T, string?> listener) => null;
 }
 
-/// <summary>An <see cref="IAlertSource"/> tests can raise at will.</summary>
+/// <summary>An <see cref="IAlertSource"/> tests can raise at will, with a configurable identity.</summary>
 internal sealed class FakeAlertSource : IAlertSource
 {
+    public FakeAlertSource(string sourceId = "test", string sourceName = "Test")
+    {
+        SourceId = sourceId;
+        SourceName = sourceName;
+    }
+
+    public string SourceId { get; }
+    public string SourceName { get; }
     public event EventHandler<Alert>? AlertRaised;
     public void Raise(Alert alert) => AlertRaised?.Invoke(this, alert);
 }

@@ -70,15 +70,20 @@ internal static class Program
                 // Platform-neutral pipeline (options, coordinator).
                 services.AddHeadsUpCore(ctx.Configuration);
 
-                // Detection source: the client-session prototype (SlackClientApi) or the
-                // official Slack app (SlackApi).
+                // Detection sources: each configured connector runs side by side (legacy
+                // single-Mode configs resolve to one connector).
                 var detection = ctx.Configuration.GetSection(DetectionOptions.SectionName)
                     .Get<DetectionOptions>() ?? new();
-                if (detection.UseSlackClientApi)
+                var connectors = detection.ResolveConnectors();
+
+                // WebView2 credentials survive rotation but are Windows-only, so they're
+                // registered here in the WPF head (before AddConnector, whose TryAdd then
+                // leaves this provider in place instead of the config one). Registered once
+                // if any Slack client-session connector is configured to use it.
+                var wantsWebView = connectors.Any(c =>
+                    string.Equals(c.Type, DetectionOptions.SlackClientApi, StringComparison.OrdinalIgnoreCase));
+                if (wantsWebView)
                 {
-                    // WebView2 credentials survive rotation but are Windows-only, so they're
-                    // registered here in the WPF head (before the core call, whose TryAdd then
-                    // leaves this provider in place instead of the config one).
                     var clientOpts = ctx.Configuration.GetSection(SlackClientOptions.SectionName)
                         .Get<SlackClientOptions>() ?? new();
                     if (clientOpts.UseWebViewCredentials)
@@ -87,13 +92,10 @@ internal static class Program
                         services.AddSingleton<ConnectionGate>();
                         services.AddSingleton<ISlackCredentialProvider, WebView2SlackCredentialProvider>();
                     }
+                }
 
-                    services.AddSlackClientApiHuddleDetection(ctx.Configuration);
-                }
-                else
-                {
-                    services.AddSlackApiHuddleDetection(ctx.Configuration);
-                }
+                foreach (var connector in connectors)
+                    services.AddConnector(ctx.Configuration, connector);
 
                 // Windows presentation layer.
                 services.AddSingleton<INotificationService, WpfNotificationService>();

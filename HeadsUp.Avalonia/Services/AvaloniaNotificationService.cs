@@ -16,6 +16,7 @@ namespace HeadsUp.AvaloniaApp.Services;
 public sealed class AvaloniaNotificationService : INotificationService
 {
     private readonly IOptionsMonitor<NotificationOptions> _options;
+    private readonly AlertLinks _links;
     private readonly ILogger<AvaloniaNotificationService> _logger;
 
     // Popups currently on screen, so simultaneous alerts stack instead of overlapping.
@@ -24,9 +25,11 @@ public sealed class AvaloniaNotificationService : INotificationService
 
     public AvaloniaNotificationService(
         IOptionsMonitor<NotificationOptions> options,
+        AlertLinks links,
         ILogger<AvaloniaNotificationService> logger)
     {
         _options = options;
+        _links = links;
         _logger = logger;
     }
 
@@ -50,6 +53,7 @@ public sealed class AvaloniaNotificationService : INotificationService
     {
         var vm = new HuddlePopupViewModel();
         vm.Populate(huddle);
+        vm.JoinTargets = _links.Targets(huddle);
 
         var window = new HuddlePopupWindow
         {

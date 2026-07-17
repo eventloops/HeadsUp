@@ -1,16 +1,20 @@
 using HeadsUp.Configuration;
 using HeadsUp.Models;
-using System.Text.RegularExpressions;
 
 namespace HeadsUp.Services;
 
 /// <summary>
-/// Shared alert-classification rules, used by both detection sources so SlackApi
-/// (Socket Mode) and SlackClientApi (client session) modes alert on exactly the
-/// same activity and honor the same <see cref="AlertOptions"/> toggles.
+/// Source-neutral alert-classification policy: which enabled kind (if any) a message
+/// should alert as, and the shared muted/keyword rules. Every connector feeds it the
+/// same normalized facts (is this a mention of me, is this a DM, the plain text), so
+/// all sources honor identical <see cref="AlertOptions"/> toggles. Connector-specific
+/// parsing of those facts lives in each source (e.g. <see cref="SlackMessageParser"/>).
 /// </summary>
 public static class AlertClassifier
 {
+    /// <summary>Default maximum length of a message preview before it is ellipsized.</summary>
+    public const int PreviewMaxLength = 140;
+
     /// <summary>
     /// True for message subtypes that signal a huddle start: "huddle_thread" for
     /// huddles, "sh_room_created" for legacy Slack Calls.
@@ -19,18 +23,14 @@ public static class AlertClassifier
         subtype is "huddle_thread" or "sh_room_created";
 
     /// <summary>
-    /// Classifies a plain user message (no subtype) against the enabled alert kinds,
+    /// Classifies a message from its normalized facts against the enabled alert kinds,
     /// or <c>null</c> when it shouldn't alert. Priority: a direct @mention beats
     /// "it's a DM" beats a keyword match. A muted channel never alerts.
     /// </summary>
-    public static AlertKind? ClassifyMessage(string text, string channelId, string? selfUserId, AlertOptions alerts)
+    public static AlertKind? Classify(bool isMention, bool isDm, string text, string channelId, string sourceId, AlertOptions alerts)
     {
-        if (IsChannelMuted(channelId, alerts))
+        if (IsChannelMuted(channelId, sourceId, alerts))
             return null;
-
-        var isMention = selfUserId is not null &&
-                        text.Contains($"<@{selfUserId}>", StringComparison.OrdinalIgnoreCase);
-        var isDm = channelId.StartsWith('D');
 
         if (alerts.Mentions && isMention) return AlertKind.Mention;
         if (alerts.DirectMessages && isDm) return AlertKind.DirectMessage;
@@ -38,11 +38,15 @@ public static class AlertClassifier
         return null;
     }
 
-    /// <summary>True when the channel is on the muted list (case-insensitive on id).</summary>
-    public static bool IsChannelMuted(string channelId, AlertOptions alerts)
+    /// <summary>
+    /// True when the channel is muted for its connector (case-insensitive on id and source).
+    /// A muted entry only silences the source it belongs to, so ids can't collide across connectors.
+    /// </summary>
+    public static bool IsChannelMuted(string channelId, string sourceId, AlertOptions alerts)
     {
         foreach (var muted in alerts.MutedChannels)
-            if (string.Equals(muted.Id, channelId, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(muted.Id, channelId, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(muted.Source, sourceId, StringComparison.OrdinalIgnoreCase))
                 return true;
         return false;
     }
@@ -56,10 +60,10 @@ public static class AlertClassifier
         return false;
     }
 
-    /// <summary>Strip Slack's angle-bracket tokens (mentions/links/channels) and clamp length.</summary>
-    public static string Preview(string text)
+    /// <summary>Collapse newlines, trim, and clamp to <see cref="PreviewMaxLength"/> with an ellipsis.</summary>
+    public static string Truncate(string text, int maxLength = PreviewMaxLength)
     {
-        text = Regex.Replace(text, "<[^>]*>", string.Empty).Replace('\n', ' ').Trim();
-        return text.Length > 140 ? text[..140] + "…" : text;
+        text = text.Replace('\n', ' ').Trim();
+        return text.Length > maxLength ? text[..maxLength] + "…" : text;
     }
 }

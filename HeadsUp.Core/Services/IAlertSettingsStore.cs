@@ -54,9 +54,15 @@ public sealed class JsonAlertSettingsStore : IAlertSettingsStore
         var muted = new JsonArray();
         foreach (var channel in options.MutedChannels
                      .Where(c => !string.IsNullOrWhiteSpace(c.Id))
-                     .GroupBy(c => c.Id, StringComparer.OrdinalIgnoreCase)
+                     // De-dupe on source + id, so the same channel id under two connectors both persist.
+                     .GroupBy(c => (Source: (c.Source ?? string.Empty).ToLowerInvariant(), Id: c.Id.ToLowerInvariant()))
                      .Select(g => g.First()))
-            muted.Add(new JsonObject { ["Id"] = channel.Id, ["Name"] = channel.Name });
+            muted.Add(new JsonObject
+            {
+                ["Id"] = channel.Id,
+                ["Name"] = channel.Name,
+                ["Source"] = string.IsNullOrWhiteSpace(channel.Source) ? SlackSource.Id : channel.Source,
+            });
 
         root["Alerts"] = new JsonObject
         {

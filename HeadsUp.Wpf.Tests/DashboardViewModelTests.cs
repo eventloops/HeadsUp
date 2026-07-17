@@ -31,14 +31,16 @@ public class DashboardViewModelTests
     {
         public List<string> Current { get; set; } = [];
         public List<string>? LastSaved { get; private set; }
+        public string? LastSavedSource { get; private set; }
         public bool Throw { get; set; }
 
-        public IReadOnlyList<string> CurrentUserIds => Current;
+        public IReadOnlyList<string> CurrentUserIds(string sourceId) => Current;
 
-        public Task SetAsync(IEnumerable<string> userIds, CancellationToken ct = default)
+        public Task SetAsync(string sourceId, IEnumerable<string> userIds, CancellationToken ct = default)
         {
             if (Throw)
                 throw new InvalidOperationException("disk full");
+            LastSavedSource = sourceId;
             LastSaved = userIds.ToList();
             return Task.CompletedTask;
         }
@@ -65,6 +67,7 @@ public class DashboardViewModelTests
     private readonly AlertHistory _history = new();
     private readonly SnoozeService _snooze = new();
     private readonly AppStatus _status = new();
+    private readonly AlertLinks _links = new(new[] { new SlackAlertLinkResolver() });
 
     private static DirectoryUser User(string id, string name, string? real = null) =>
         new(id, name, real, null);
@@ -79,10 +82,12 @@ public class DashboardViewModelTests
         Link: "https://app.slack.com/huddle/T1/C1",
         IsPriorityUser: false,
         OccurredAt: DateTimeOffset.Now,
-        Kind: kind);
+        Kind: kind,
+        SourceId: "slack",
+        SourceName: "Slack");
 
     private DashboardViewModel CreateVm() =>
-        new(_status, _directory, _priorityStore, _alertStore, _history, _snooze);
+        new(_status, _directory, _priorityStore, _alertStore, _history, _snooze, _links);
 
     // ------------------------------------------------------------------
     // Alert settings round trip

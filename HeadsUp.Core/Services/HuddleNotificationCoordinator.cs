@@ -5,25 +5,30 @@ using HeadsUp.Models;
 namespace HeadsUp.Services;
 
 /// <summary>
-/// Background service that wires the <see cref="IAlertSource"/> to the
-/// <see cref="INotificationService"/> and keeps the pipeline alive.
+/// Background service that wires every registered <see cref="IAlertSource"/> to the
+/// <see cref="INotificationService"/> and keeps the pipeline alive. Each alert is
+/// stamped with the raising source's identity before it is recorded or shown, so the
+/// rest of the pipeline (history, deep links, per-source status) can tell connectors apart.
 /// </summary>
 public sealed class HuddleNotificationCoordinator : BackgroundService
 {
-    private readonly IAlertSource _eventSource;
+    private readonly IReadOnlyList<IAlertSource> _sources;
     private readonly INotificationService _notificationService;
     private readonly IAlertHistory _history;
     private readonly IAlertGate _gate;
     private readonly ILogger<HuddleNotificationCoordinator> _logger;
 
+    // Per-source handlers, kept so each can be detached on shutdown.
+    private readonly List<(IAlertSource Source, EventHandler<Alert> Handler)> _handlers = new();
+
     public HuddleNotificationCoordinator(
-        IAlertSource eventSource,
+        IEnumerable<IAlertSource> sources,
         INotificationService notificationService,
         IAlertHistory history,
         IAlertGate gate,
         ILogger<HuddleNotificationCoordinator> logger)
     {
-        _eventSource = eventSource;
+        _sources = sources.ToList();
         _notificationService = notificationService;
         _history = history;
         _gate = gate;
@@ -32,20 +37,34 @@ public sealed class HuddleNotificationCoordinator : BackgroundService
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _eventSource.AlertRaised += OnAlertRaised;
-        _logger.LogInformation("Huddle notification coordinator is running.");
+        foreach (var source in _sources)
+        {
+            // Capture the source so the alert can be stamped with its identity.
+            EventHandler<Alert> handler = (_, alert) => OnAlertRaised(source, alert);
+            source.AlertRaised += handler;
+            _handlers.Add((source, handler));
+        }
+
+        _logger.LogInformation(
+            "Huddle notification coordinator is running with {Count} source(s): {Sources}.",
+            _sources.Count, string.Join(", ", _sources.Select(s => s.SourceName)));
 
         // Keep alive until cancellation.
         return Task.Delay(Timeout.Infinite, stoppingToken)
                    .ContinueWith(_ =>
                    {
-                       _eventSource.AlertRaised -= OnAlertRaised;
+                       foreach (var (source, handler) in _handlers)
+                           source.AlertRaised -= handler;
+                       _handlers.Clear();
                        _logger.LogInformation("Huddle notification coordinator stopped.");
                    }, TaskScheduler.Default);
     }
 
-    private void OnAlertRaised(object? sender, Alert e)
+    private void OnAlertRaised(IAlertSource source, Alert raised)
     {
+        // Stamp the connector identity so history, deep links and status can tell sources apart.
+        var e = raised with { SourceId = source.SourceId, SourceName = source.SourceName };
+
         // Log it to history first so the dashboard reflects it even if the popup is missed.
         _history.Record(e);
 

@@ -49,15 +49,19 @@ public sealed partial class WelcomeViewModel : ObservableObject, IDisposable
         _status.PropertyChanged += OnStatusChanged;
     }
 
+    private bool _handedOff;
+
     private void OnStatusChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (!IsConnecting)
+        if (!IsConnecting || _handedOff)
             return;
 
-        // Hand off: close once we're connected, or once the Slack sign-in window has come up.
+        // Hand off exactly once: close when any source connects, or when a sign-in window comes
+        // up. The aggregate status can re-raise these as sources update, so guard against repeats.
         if ((e.PropertyName == nameof(AppStatus.IsConnected) && _status.IsConnected) ||
             (e.PropertyName == nameof(AppStatus.NeedsSignIn) && _status.NeedsSignIn))
         {
+            _handedOff = true;
             CloseRequested?.Invoke(this, EventArgs.Empty);
         }
     }

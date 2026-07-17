@@ -25,6 +25,8 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
     private readonly IOptionsMonitor<SlackOptions> _slackOptions;
     private readonly IOptionsMonitor<DetectionOptions> _detectionOptions;
     private readonly IOptionsMonitor<AlertOptions> _alertOptions;
+    private readonly IOptionsMonitor<PriorityOptions> _priorityOptions;
+    private readonly AppStatus _status;
     private readonly ILogger<SlackHuddleMonitor> _logger;
 
     // Channel ID -> last time we notified for it, to avoid duplicate events.
@@ -32,6 +34,12 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
 
     private string? _teamId;
     private string? _selfUserId;
+
+    public string SourceId => SlackSource.Id;
+    public string SourceName => SlackSource.Name;
+
+    /// <summary>This source's own status entry (created on first use if not pre-seeded).</summary>
+    private SourceStatus Status => _status.GetOrAdd(SourceId, SourceName);
 
     public event EventHandler<Alert>? AlertRaised;
 
@@ -41,6 +49,8 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
         IOptionsMonitor<SlackOptions> slackOptions,
         IOptionsMonitor<DetectionOptions> detectionOptions,
         IOptionsMonitor<AlertOptions> alertOptions,
+        IOptionsMonitor<PriorityOptions> priorityOptions,
+        AppStatus status,
         ILogger<SlackHuddleMonitor> logger)
     {
         _socketClient = socketClient;
@@ -48,15 +58,21 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
         _slackOptions = slackOptions;
         _detectionOptions = detectionOptions;
         _alertOptions = alertOptions;
+        _priorityOptions = priorityOptions;
+        _status = status;
         _logger = logger;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        Status.Mode = DetectionOptions.SlackApi;
+        Status.CredentialSource = "appsettings (Slack app tokens)";
+
         var slack = _slackOptions.CurrentValue;
         if (string.IsNullOrWhiteSpace(slack.AppToken) ||
             string.IsNullOrWhiteSpace(slack.UserToken))
         {
+            Status.SetConnection(false, "Slack tokens not configured");
             _logger.LogWarning(
                 "Slack tokens are not configured. Edit appsettings.json and restart. " +
                 "AppToken (xapp-...) and UserToken (xoxp-...) are both required.");
@@ -65,12 +81,14 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
 
         await _socketClient.Connect(cancellationToken: cancellationToken);
         _logger.LogInformation("Connected to Slack via Socket Mode.");
+        Status.SetConnection(true, "Watching for huddles");
 
         try
         {
             var auth = await _apiClient.Auth.Test();
             _teamId = auth.TeamId;
             _selfUserId = auth.UserId;
+            Status.SetAccount(auth.User, auth.Team);
         }
         catch (Exception ex)
         {
@@ -83,6 +101,7 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
         if (_socketClient.Connected)
         {
             _socketClient.Disconnect();
+            Status.SetConnection(false, "Disconnected");
             _logger.LogInformation("Disconnected from Slack.");
         }
 
@@ -101,7 +120,7 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
         // legacy Slack Calls use "sh_room_created".
         if (AlertClassifier.IsHuddleSubtype(slackEvent.Subtype))
         {
-            if (!alerts.Huddles || AlertClassifier.IsChannelMuted(slackEvent.Channel ?? string.Empty, alerts))
+            if (!alerts.Huddles || AlertClassifier.IsChannelMuted(slackEvent.Channel ?? string.Empty, SourceId, alerts))
                 return;
 
             _logger.LogDebug("Huddle-related message detected. Channel={Channel} Subtype={Subtype}",
@@ -129,7 +148,9 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
         if (userId.Equals(_selfUserId, StringComparison.OrdinalIgnoreCase))
             return;
 
-        if (AlertClassifier.ClassifyMessage(text, channelId, _selfUserId, alerts) is not { } kind)
+        var isMention = SlackMessageParser.IsMention(text, _selfUserId);
+        var isDm = SlackMessageParser.IsDirectMessage(channelId);
+        if (AlertClassifier.Classify(isMention, isDm, text, channelId, SourceId, alerts) is not { } kind)
             return;
 
         _logger.LogInformation("{Kind} alert: user={User} channel={Channel}.", kind, userId, channelId);
@@ -138,7 +159,6 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
         {
             var (displayName, avatarUrl) = await ResolveUserAsync(userId);
 
-            var isDm = channelId.StartsWith('D');
             var channelName = channelId;
             if (!isDm)
             {
@@ -153,7 +173,7 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
                 }
             }
 
-            var isPriority = _slackOptions.CurrentValue.PriorityUsers.Contains(userId, StringComparer.OrdinalIgnoreCase);
+            var isPriority = _priorityOptions.CurrentValue.IsPriority(SourceId, userId);
             var link = string.IsNullOrEmpty(_teamId)
                 ? $"slack://channel?id={channelId}"
                 : $"https://app.slack.com/client/{_teamId}/{channelId}";
@@ -169,7 +189,7 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
                 IsPriorityUser: isPriority,
                 OccurredAt: DateTimeOffset.Now,
                 Kind: kind,
-                Preview: AlertClassifier.Preview(text)));
+                Preview: SlackMessageParser.Preview(text)));
         }
         catch (Exception ex)
         {
@@ -207,7 +227,7 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
             // about channels they aren't a member of. DMs and group DMs are
             // theirs by definition; fail open if the API call errors.
             string channelName = channelId;
-            bool isDm = channelId.StartsWith('D');
+            bool isDm = SlackMessageParser.IsDirectMessage(channelId);
             try
             {
                 var convInfo = await _apiClient.Conversations.Info(channelId);
@@ -230,7 +250,7 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
             }
 
             var (displayName, avatarUrl) = await ResolveUserAsync(userId);
-            var isPriority = _slackOptions.CurrentValue.PriorityUsers.Contains(userId, StringComparer.OrdinalIgnoreCase);
+            var isPriority = _priorityOptions.CurrentValue.IsPriority(SourceId, userId);
 
             // With a team id Slack can deep-link straight into the huddle;
             // otherwise fall back to opening the channel.

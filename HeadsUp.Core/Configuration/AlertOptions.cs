@@ -32,4 +32,8 @@ public sealed class MutedChannel
 {
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>Which connector this channel belongs to. Defaults to "slack" so entries from
+    /// older configs (which had no source) are treated as Slack channels.</summary>
+    public string Source { get; set; } = HeadsUp.Services.SlackSource.Id;
 }
