@@ -10,7 +10,7 @@
 
     <Grid>
         <tb:TaskbarIcon x:Name="TrayIcon"
-                        ToolTipText="Slack Huddle Notifier"
+                        ToolTipText="Heads-Up"
                         IconSource="/Assets/tray.ico"
                         DoubleClickCommand="{Binding OpenDashboardCommand}">
             <tb:TaskbarIcon.ContextMenu>

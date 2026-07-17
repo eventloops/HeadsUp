@@ -33,7 +33,7 @@ internal static class Program
 
         try
         {
-            Log.Information("Starting Slack Huddle Notifier...");
+            Log.Information("Starting Heads-Up...");
 
             // WPF requires STA and its own startup path.
             var app = new App();

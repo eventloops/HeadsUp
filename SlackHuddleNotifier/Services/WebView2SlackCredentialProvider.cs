@@ -292,7 +292,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
 
         panel.Children.Add(new TextBlock
         {
-            Text = "Slack Huddle Notifier",
+            Text = "Heads-Up",
             FontFamily = font,
             FontSize = 17,
             FontWeight = FontWeights.SemiBold,

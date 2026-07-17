@@ -1,4 +1,4 @@
-# Slack Huddle Notifier for Windows
+# Heads-Up for Windows
 
 ## Project Overview
 

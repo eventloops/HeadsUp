@@ -1,8 +1,8 @@
-# Slack Huddle Notifier
+# Heads-Up
 
-Teams-style popup notifications when someone starts a Slack Huddle — bigger,
-louder, and harder to miss than Slack's own notification. Runs quietly in the
-system tray (Windows) or menu bar (macOS).
+Big, hard-to-miss desktop alerts for the Slack activity you can't afford to miss —
+starting with huddles. Bigger, louder, and harder to miss than Slack's own
+notifications. Runs quietly in the system tray (Windows) or menu bar (macOS).
 
 - Shows who started the huddle, in which channel or DM, with their avatar
 - One-click **Join huddle** button
