@@ -29,7 +29,7 @@ namespace HeadsUp.Services;
 /// logged at Debug so this source doubles as a probe - start a huddle and watch
 /// the log to confirm exactly what Slack pushes.
 /// </summary>
-public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
+public sealed class SlackWebHuddleSource : BackgroundService, IAlertSource
 {
     /// <summary>Cooldown before a new huddle in the same channel fires another notification.</summary>
     private static readonly TimeSpan DedupeCooldown = TimeSpan.FromMinutes(5);
@@ -50,7 +50,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
     private string? _selfUserId;
     private int _messageId;
 
-    public event EventHandler<HuddleEvent>? HuddleStarted;
+    public event EventHandler<Alert>? AlertRaised;
 
     public SlackWebHuddleSource(
         ISlackCredentialProvider credentials,
@@ -252,7 +252,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
             user ?? "?", channel ?? "?", subtype);
 
         // Resolving names/channel hits the API; don't block the read loop on it.
-        _ = RaiseHuddleEventAsync(user, channel);
+        _ = RaiseAlertAsync(user, channel);
     }
 
     private async Task KeepAliveAsync(ClientWebSocket ws, CancellationToken ct)
@@ -280,7 +280,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
         }
     }
 
-    private async Task RaiseHuddleEventAsync(string? userId, string? channelId)
+    private async Task RaiseAlertAsync(string? userId, string? channelId)
     {
         if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(channelId))
             return;
@@ -339,14 +339,14 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
                 ? $"slack://channel?id={channelId}"
                 : $"https://app.slack.com/huddle/{_teamId}/{channelId}";
 
-            var huddleEvent = new HuddleEvent(
+            var huddleEvent = new Alert(
                 InitiatorUserId: userId,
                 InitiatorDisplayName: displayName,
                 InitiatorAvatarUrl: avatarUrl,
                 ChannelId: channelId,
                 ChannelName: channelName,
                 IsDirectMessage: isDm,
-                HuddleLink: huddleLink,
+                Link: huddleLink,
                 IsPriorityUser: isPriority,
                 OccurredAt: now);
 
@@ -354,7 +354,7 @@ public sealed class SlackWebHuddleSource : BackgroundService, IHuddleEventSource
                 "Huddle started by {User} in {Channel}{Priority}.",
                 displayName, channelName, isPriority ? " [PRIORITY]" : string.Empty);
 
-            HuddleStarted?.Invoke(this, huddleEvent);
+            AlertRaised?.Invoke(this, huddleEvent);
         }
         catch (Exception ex)
         {

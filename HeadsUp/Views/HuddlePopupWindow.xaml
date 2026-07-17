@@ -108,7 +108,7 @@
                     Style="{StaticResource AccentBorder}">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock x:Name="HeaderIcon"
-                               Text="&#x1F3A7;" FontSize="18"
+                               Text="{Binding Icon}" FontSize="18"
                                VerticalAlignment="Center" Margin="0,0,10,0"
                                RenderTransformOrigin="0.5,0.5">
                         <TextBlock.RenderTransform>
@@ -130,7 +130,7 @@
                         </TextBlock.Triggers>
                     </TextBlock>
                     <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="Slack huddle started"
+                        <TextBlock Text="{Binding Headline}"
                                    Foreground="White"
                                    FontSize="13"
                                    FontWeight="SemiBold"
@@ -190,7 +190,7 @@
                         Command="{Binding DismissCommand}"
                         Margin="0,0,10,0"/>
                 <Button Style="{StaticResource PrimaryButton}"
-                        Content="Join huddle"
+                        Content="{Binding ActionLabel}"
                         Command="{Binding JoinHuddleCommand}"/>
             </StackPanel>
 

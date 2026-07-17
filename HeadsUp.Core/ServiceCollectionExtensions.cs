@@ -13,7 +13,7 @@ public static class ServiceCollectionExtensions
     /// <summary>
     /// Registers the platform-neutral pipeline: options and the notification
     /// coordinator. The platform head must also register an
-    /// <see cref="IHuddleEventSource"/> (e.g. <see cref="AddSlackApiHuddleDetection"/>)
+    /// <see cref="IAlertSource"/> (e.g. <see cref="AddSlackApiHuddleDetection"/>)
     /// and its own <see cref="INotificationService"/>.
     /// </summary>
     public static IServiceCollection AddHeadsUpCore(
@@ -52,7 +52,7 @@ public static class ServiceCollectionExtensions
         });
 
         services.AddSingleton<SlackHuddleMonitor>();
-        services.AddSingleton<IHuddleEventSource>(sp => sp.GetRequiredService<SlackHuddleMonitor>());
+        services.AddSingleton<IAlertSource>(sp => sp.GetRequiredService<SlackHuddleMonitor>());
         services.AddHostedService(sp => sp.GetRequiredService<SlackHuddleMonitor>());
 
         return services;
@@ -78,7 +78,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IUserDirectory, SlackWebUserDirectory>();
 
         services.AddSingleton<SlackWebHuddleSource>();
-        services.AddSingleton<IHuddleEventSource>(sp => sp.GetRequiredService<SlackWebHuddleSource>());
+        services.AddSingleton<IAlertSource>(sp => sp.GetRequiredService<SlackWebHuddleSource>());
         services.AddHostedService(sp => sp.GetRequiredService<SlackWebHuddleSource>());
 
         return services;

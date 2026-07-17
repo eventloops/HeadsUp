@@ -26,7 +26,7 @@ public sealed class ToastNotificationService : INotificationService
         _logger = logger;
     }
 
-    public Task ShowHuddleNotificationAsync(HuddleEvent huddle, CancellationToken ct = default)
+    public Task ShowAlertAsync(Alert huddle, CancellationToken ct = default)
     {
         try
         {
@@ -43,7 +43,7 @@ public sealed class ToastNotificationService : INotificationService
 
     // ------------------------------------------------------------------
 
-    private void ShowToast(HuddleEvent huddle)
+    private void ShowToast(Alert huddle)
     {
         var channelDisplay = huddle.IsDirectMessage
             ? $"DM with {huddle.InitiatorDisplayName}"
@@ -66,7 +66,7 @@ public sealed class ToastNotificationService : INotificationService
             .AddText(huddle.OccurredAt.ToLocalTime().ToString("h:mm tt"), hintStyle: AdaptiveTextStyle.CaptionSubtle)
             .AddButton(new ToastButton()
                 .SetContent("Join Huddle")
-                .SetProtocolActivation(new Uri(huddle.HuddleLink)))
+                .SetProtocolActivation(new Uri(huddle.Link)))
             .AddButton(new ToastButtonDismiss("Dismiss"))
             .SetToastDuration(ToastDuration.Long)
             .SetToastScenario(huddle.IsPriorityUser

@@ -29,7 +29,7 @@ public sealed class WpfNotificationService : INotificationService
         _dispatcher = Application.Current.Dispatcher;
     }
 
-    public Task ShowHuddleNotificationAsync(HuddleEvent huddle, CancellationToken ct = default)
+    public Task ShowAlertAsync(Alert huddle, CancellationToken ct = default)
     {
         return _dispatcher.InvokeAsync(() =>
         {
@@ -45,7 +45,7 @@ public sealed class WpfNotificationService : INotificationService
         }).Task;
     }
 
-    private void ShowPopup(HuddleEvent huddle)
+    private void ShowPopup(Alert huddle)
     {
         var options = _options.CurrentValue;
         var vm = new HuddlePopupViewModel();

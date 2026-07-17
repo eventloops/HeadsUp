@@ -51,14 +51,14 @@ public partial class App : Application
             if (e.Args.Contains("--test-popup"))
             {
                 var notifier = _host.Services.GetRequiredService<INotificationService>();
-                _ = notifier.ShowHuddleNotificationAsync(new HuddleEvent(
+                _ = notifier.ShowAlertAsync(new Alert(
                     InitiatorUserId: "U000TEST",
                     InitiatorDisplayName: "Sarah Whitfield",
                     InitiatorAvatarUrl: null,
                     ChannelId: "C000TEST",
                     ChannelName: "project-atlas",
                     IsDirectMessage: false,
-                    HuddleLink: "https://slack.com",
+                    Link: "https://app.slack.com/huddle/T000TEST/C000TEST",
                     IsPriorityUser: e.Args.Contains("--priority"),
                     OccurredAt: DateTimeOffset.Now));
             }

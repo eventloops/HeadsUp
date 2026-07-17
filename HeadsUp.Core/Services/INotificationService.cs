@@ -4,5 +4,5 @@ namespace HeadsUp.Services;
 
 public interface INotificationService
 {
-    Task ShowHuddleNotificationAsync(HuddleEvent huddle, CancellationToken ct = default);
+    Task ShowAlertAsync(Alert huddle, CancellationToken ct = default);
 }

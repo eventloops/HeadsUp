@@ -95,14 +95,14 @@ public partial class App : Application
     private void ShowTestPopup(bool priority)
     {
         var notifier = _host?.Services.GetRequiredService<INotificationService>();
-        _ = notifier?.ShowHuddleNotificationAsync(new HuddleEvent(
+        _ = notifier?.ShowAlertAsync(new Alert(
             InitiatorUserId: "U000TEST",
             InitiatorDisplayName: "Sarah Whitfield",
             InitiatorAvatarUrl: null,
             ChannelId: "C000TEST",
             ChannelName: "project-atlas",
             IsDirectMessage: false,
-            HuddleLink: "https://slack.com",
+            Link: "https://slack.com",
             IsPriorityUser: priority,
             OccurredAt: DateTimeOffset.Now));
     }

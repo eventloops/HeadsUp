@@ -26,7 +26,7 @@ public sealed class AvaloniaNotificationService : INotificationService
         _logger = logger;
     }
 
-    public async Task ShowHuddleNotificationAsync(HuddleEvent huddle, CancellationToken ct = default)
+    public async Task ShowAlertAsync(Alert huddle, CancellationToken ct = default)
     {
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
@@ -42,7 +42,7 @@ public sealed class AvaloniaNotificationService : INotificationService
         });
     }
 
-    private void ShowPopup(HuddleEvent huddle)
+    private void ShowPopup(Alert huddle)
     {
         var vm = new HuddlePopupViewModel();
         vm.Populate(huddle);

@@ -5,17 +5,17 @@ using HeadsUp.Models;
 namespace HeadsUp.Services;
 
 /// <summary>
-/// Background service that wires the <see cref="IHuddleEventSource"/> to the
+/// Background service that wires the <see cref="IAlertSource"/> to the
 /// <see cref="INotificationService"/> and keeps the pipeline alive.
 /// </summary>
 public sealed class HuddleNotificationCoordinator : BackgroundService
 {
-    private readonly IHuddleEventSource _eventSource;
+    private readonly IAlertSource _eventSource;
     private readonly INotificationService _notificationService;
     private readonly ILogger<HuddleNotificationCoordinator> _logger;
 
     public HuddleNotificationCoordinator(
-        IHuddleEventSource eventSource,
+        IAlertSource eventSource,
         INotificationService notificationService,
         ILogger<HuddleNotificationCoordinator> logger)
     {
@@ -26,22 +26,22 @@ public sealed class HuddleNotificationCoordinator : BackgroundService
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _eventSource.HuddleStarted += OnHuddleStarted;
+        _eventSource.AlertRaised += OnAlertRaised;
         _logger.LogInformation("Huddle notification coordinator is running.");
 
         // Keep alive until cancellation.
         return Task.Delay(Timeout.Infinite, stoppingToken)
                    .ContinueWith(_ =>
                    {
-                       _eventSource.HuddleStarted -= OnHuddleStarted;
+                       _eventSource.AlertRaised -= OnAlertRaised;
                        _logger.LogInformation("Huddle notification coordinator stopped.");
                    }, TaskScheduler.Default);
     }
 
-    private void OnHuddleStarted(object? sender, HuddleEvent e)
+    private void OnAlertRaised(object? sender, Alert e)
     {
         // Fire-and-forget with logging; do not block the Slack event thread.
-        _ = _notificationService.ShowHuddleNotificationAsync(e)
+        _ = _notificationService.ShowAlertAsync(e)
             .ContinueWith(t =>
             {
                 if (t.IsFaulted)

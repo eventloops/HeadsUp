@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using HeadsUp.Models;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 namespace HeadsUp.ViewModels;
 
@@ -28,22 +29,42 @@ public sealed partial class HuddlePopupViewModel : ObservableObject
     [ObservableProperty]
     private bool _isPriorityUser;
 
-    private string _huddleLink = string.Empty;
+    [ObservableProperty]
+    private string _headline = string.Empty;
+
+    [ObservableProperty]
+    private string _icon = string.Empty;
+
+    [ObservableProperty]
+    private string _actionLabel = string.Empty;
+
+    private string _link = string.Empty;
 
     public event EventHandler? CloseRequested;
 
-    public void Populate(HuddleEvent huddle)
+    public void Populate(Alert alert)
     {
-        InitiatorName = huddle.InitiatorDisplayName;
-        AvatarUrl = huddle.InitiatorAvatarUrl;
-        Initials = GetInitials(huddle.InitiatorDisplayName);
-        ChannelDisplay = huddle.IsDirectMessage
-            ? $"DM with {huddle.InitiatorDisplayName}"
-            : $"#{huddle.ChannelName}";
-        TimeDisplay = huddle.OccurredAt.ToLocalTime().ToString("h:mm tt").ToLowerInvariant();
-        Subtitle = $"{ChannelDisplay} · {TimeDisplay}";
-        IsPriorityUser = huddle.IsPriorityUser;
-        _huddleLink = huddle.HuddleLink;
+        InitiatorName = alert.InitiatorDisplayName;
+        AvatarUrl = alert.InitiatorAvatarUrl;
+        Initials = GetInitials(alert.InitiatorDisplayName);
+        ChannelDisplay = alert.IsDirectMessage
+            ? $"DM with {alert.InitiatorDisplayName}"
+            : $"#{alert.ChannelName}";
+        TimeDisplay = alert.OccurredAt.ToLocalTime().ToString("h:mm tt").ToLowerInvariant();
+        // Show the message preview when there is one (mentions/DMs/keywords); else channel · time.
+        Subtitle = string.IsNullOrWhiteSpace(alert.Preview)
+            ? $"{ChannelDisplay} · {TimeDisplay}"
+            : alert.Preview;
+        IsPriorityUser = alert.IsPriorityUser;
+        _link = alert.Link;
+
+        (Headline, Icon, ActionLabel) = alert.Kind switch
+        {
+            AlertKind.Mention => ("Mentioned you", "\U0001F4AC", "Open"),
+            AlertKind.DirectMessage => ("Direct message", "✉", "Open"),
+            AlertKind.Keyword => ("Keyword match", "\U0001F514", "Open"),
+            _ => ("Huddle started", "\U0001F3A7", "Join huddle"),
+        };
     }
 
     private static string GetInitials(string displayName)
@@ -60,12 +81,27 @@ public sealed partial class HuddlePopupViewModel : ObservableObject
     [RelayCommand]
     private void JoinHuddle()
     {
-        try
+        // Prefer the desktop Slack app (slack:// scheme) over bouncing through the browser;
+        // fall back to the next target if a launch fails (e.g. the app isn't installed).
+        foreach (var target in JoinTargets(_link))
         {
-            Process.Start(new ProcessStartInfo(_huddleLink) { UseShellExecute = true });
+            try
+            {
+                Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+                break;
+            }
+            catch { /* try the next target */ }
         }
-        catch { /* ignore */ }
         CloseRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Desktop-app deep link first, then the original (web) link as a fallback.</summary>
+    private static IEnumerable<string> JoinTargets(string link)
+    {
+        var m = Regex.Match(link, @"app\.slack\.com/huddle/(?<team>[^/]+)/(?<channel>[^/?#]+)");
+        if (m.Success)
+            yield return $"slack://huddle?team={m.Groups["team"].Value}&id={m.Groups["channel"].Value}";
+        yield return link;
     }
 
     [RelayCommand]

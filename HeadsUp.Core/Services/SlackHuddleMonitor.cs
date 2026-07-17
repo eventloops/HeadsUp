@@ -10,12 +10,12 @@ using System.Collections.Concurrent;
 namespace HeadsUp.Services;
 
 /// <summary>
-/// Connects to Slack via Socket Mode and raises <see cref="HuddleStarted"/> whenever
+/// Connects to Slack via Socket Mode and raises <see cref="AlertRaised"/> whenever
 /// a huddle start is detected. Slack surfaces huddle starts as channel messages with
 /// subtype "huddle_thread" (and legacy calls as "sh_room_created"), so this class is
 /// registered with SlackNet as an <see cref="IEventHandler{MessageEvent}"/>.
 /// </summary>
-public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<MessageEvent>, IHostedService
+public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEvent>, IHostedService
 {
     /// <summary>Cooldown before a new huddle in the same channel fires another notification.</summary>
     private static readonly TimeSpan DedupeCooldown = TimeSpan.FromMinutes(5);
@@ -32,7 +32,7 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
     private string? _teamId;
     private string? _selfUserId;
 
-    public event EventHandler<HuddleEvent>? HuddleStarted;
+    public event EventHandler<Alert>? AlertRaised;
 
     public SlackHuddleMonitor(
         ISlackSocketModeClient socketClient,
@@ -100,10 +100,10 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
         _logger.LogDebug("Huddle-related message detected. Channel={Channel} Subtype={Subtype}",
             slackEvent.Channel, slackEvent.Subtype);
 
-        await RaiseHuddleEventAsync(slackEvent.User, slackEvent.Channel);
+        await RaiseAlertAsync(slackEvent.User, slackEvent.Channel);
     }
 
-    private async Task RaiseHuddleEventAsync(string? userId, string? channelId)
+    private async Task RaiseAlertAsync(string? userId, string? channelId)
     {
         if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(channelId))
             return;
@@ -164,14 +164,14 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
                 ? $"slack://channel?id={channelId}"
                 : $"https://app.slack.com/huddle/{_teamId}/{channelId}";
 
-            var huddleEvent = new HuddleEvent(
+            var huddleEvent = new Alert(
                 InitiatorUserId: userId,
                 InitiatorDisplayName: displayName,
                 InitiatorAvatarUrl: avatarUrl,
                 ChannelId: channelId,
                 ChannelName: channelName,
                 IsDirectMessage: isDm,
-                HuddleLink: huddleLink,
+                Link: huddleLink,
                 IsPriorityUser: isPriority,
                 OccurredAt: now);
 
@@ -180,7 +180,7 @@ public sealed class SlackHuddleMonitor : IHuddleEventSource, IEventHandler<Messa
                 displayName, channelName,
                 isPriority ? " [PRIORITY]" : string.Empty);
 
-            HuddleStarted?.Invoke(this, huddleEvent);
+            AlertRaised?.Invoke(this, huddleEvent);
         }
         catch (Exception ex)
         {
