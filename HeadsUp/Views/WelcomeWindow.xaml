@@ -8,6 +8,7 @@
         FontFamily="Segoe UI" FontSize="13"
         Background="{StaticResource BrushBg}">
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <!-- Toggle switch: a restyled CheckBox, green when on -->
         <Style x:Key="ToggleSwitch" TargetType="CheckBox">
             <Setter Property="Cursor" Value="Hand"/>
@@ -85,7 +86,19 @@
         </Style>
     </Window.Resources>
 
+    <Grid>
+    <!-- Setup: pick alert kinds, then Connect -->
     <StackPanel Margin="34,32,34,26">
+        <StackPanel.Style>
+            <Style TargetType="StackPanel">
+                <Setter Property="Visibility" Value="Visible"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsConnecting}" Value="True">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </StackPanel.Style>
         <!-- Brand -->
         <Image Source="{StaticResource MarkAmber}" Width="52" Height="52" HorizontalAlignment="Center"/>
         <TextBlock HorizontalAlignment="Center" Margin="0,12,0,0" FontSize="27" FontWeight="Bold"
@@ -146,4 +159,20 @@
         <TextBlock Text="Runs in your tray · no admin needed" HorizontalAlignment="Center"
                    Foreground="{StaticResource BrushFaint}" FontSize="11.5" Margin="0,14,0,0"/>
     </StackPanel>
+
+    <!-- Connecting: shown after Connect, until connected or the sign-in window takes over -->
+    <StackPanel Margin="34" VerticalAlignment="Center" MinHeight="300"
+                Visibility="{Binding IsConnecting, Converter={StaticResource BoolToVis}}">
+        <StackPanel VerticalAlignment="Center">
+            <Image Source="{StaticResource MarkAmber}" Width="52" Height="52" HorizontalAlignment="Center"/>
+            <TextBlock Text="Connecting to Slack…" HorizontalAlignment="Center" Margin="0,16,0,0"
+                       FontSize="19" FontWeight="SemiBold" Foreground="{StaticResource BrushText}"/>
+            <TextBlock Text="Hang tight — signing you in." HorizontalAlignment="Center" Margin="0,4,0,0"
+                       Foreground="{StaticResource BrushMuted}" FontSize="13.5"/>
+            <ProgressBar IsIndeterminate="True" Width="230" Height="4" Margin="0,22,0,0"
+                         Foreground="{StaticResource BrushAccent}" Background="{StaticResource BrushSurface2}"
+                         BorderThickness="0"/>
+        </StackPanel>
+    </StackPanel>
+    </Grid>
 </Window>

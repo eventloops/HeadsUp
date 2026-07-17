@@ -56,7 +56,11 @@ public class WindowSmokeTests
                 });
 
                 ShowThenClose(BuildDashboard());
-                ShowThenClose(new WelcomeWindow(new WelcomeViewModel(new StubAlertStore())));
+                ShowThenClose(new WelcomeWindow(new WelcomeViewModel(new StubAlertStore(), new AppStatus())));
+                // Also render the welcome's "Connecting…" state.
+                var connectingVm = new WelcomeViewModel(new StubAlertStore(), new AppStatus());
+                connectingVm.ConnectCommand.Execute(null);
+                ShowThenClose(new WelcomeWindow(connectingVm));
             }
             catch (Exception ex)
             {

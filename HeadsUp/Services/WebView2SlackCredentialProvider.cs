@@ -67,6 +67,12 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
     private WebView2? _web;
     private SlackCredentials? _cached;
     private bool _navigated;
+    private bool _signInVisible;   // the sign-in window is currently on-screen
+    private bool _cancelled;       // the user closed the sign-in window without finishing
+
+    /// <summary>When true, the provider's own "Connecting…" splash is suppressed (the welcome
+    /// screen is acting as the connecting surface instead). Set by the WPF head.</summary>
+    public bool SuppressSplash { get; set; }
 
     public WebView2SlackCredentialProvider(
         IOptionsMonitor<SlackClientOptions> options,
@@ -122,6 +128,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
     {
         try
         {
+            _cancelled = false;
             await EnsureWebViewAsync(ct);
             ShowSplash(); // "Connecting…" while the off-screen web view loads/checks the session
             if (!_navigated)
@@ -141,14 +148,31 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
                 // No existing session - hide the splash and bring the web view forward to sign in.
                 CloseSplash();
                 ShowWebViewOnScreen();
+                _signInVisible = true;
+                _status.NeedsSignIn = true; // lets the welcome hand off to the sign-in window
                 _logger.LogInformation(
                     "Complete the Slack sign-in in the window (SSO included). It closes itself once "
                     + "your session is read.");
                 // Generous poll; if it still times out, the outer retry keeps polling this same
                 // window without re-navigating, so a slow sign-in is never interrupted.
                 token = await PollForTokenAsync(SignInPollTimeout, ct);
-                HideWebView();
-                ShowSplash(); // back to "Connecting…" while the session finishes authenticating
+                _signInVisible = false;
+                _status.NeedsSignIn = false;
+                if (!_cancelled)
+                {
+                    HideWebView();
+                    ShowSplash(); // back to "Connecting…" while the session finishes authenticating
+                }
+            }
+
+            // The user closed the sign-in window: go idle rather than spin invisibly.
+            if (_cancelled)
+            {
+                _logger.LogInformation("Slack sign-in was closed; not connected. Use tray → Connect to retry.");
+                CloseSplash();
+                _status.SetConnection(false, "Not connected");
+                _connectionGate.Reset(); // hold until the user asks to connect again
+                return null;
             }
 
             if (token is null)
@@ -201,6 +225,18 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
             ShowActivated = false,
             Content = _web,
         };
+        // If the user closes the sign-in window before it's captured a session, treat it as a
+        // cancel: tear the web view down so the next attempt rebuilds it cleanly.
+        _window.Closed += (_, _) =>
+        {
+            if (!_signInVisible)
+                return; // closed by us (teardown), not the user
+            _cancelled = true;
+            _web = null;
+            _window = null;
+            _navigated = false;
+            _signInVisible = false;
+        };
         _window.Show(); // off-screen; needed so the control initialises its HWND
 
         var env = await CoreWebView2Environment.CreateAsync(userDataFolder: dataFolder);
@@ -225,7 +261,12 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
         {
             ct.ThrowIfCancellationRequested();
 
-            var url = _web!.CoreWebView2.Source;
+            // The user may have closed the sign-in window mid-poll (the Closed handler nulls
+            // _web); stop rather than dereference a torn-down web view.
+            if (_web?.CoreWebView2 is null)
+                return null;
+
+            var url = _web.CoreWebView2.Source;
             if (url != lastUrl)
             {
                 // Sanitized: SSO redirects carry auth codes in the query string.
@@ -287,7 +328,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
     {
         var font = new FontFamily("Segoe UI");
         var accent = new SolidColorBrush(Color.FromRgb(0xF5, 0xA6, 0x23)); // signal amber
-        var muted = new SolidColorBrush(Color.FromRgb(0x6C, 0x63, 0x53));  // warm grey
+        var muted = new SolidColorBrush(Color.FromRgb(0x66, 0x70, 0x85));  // cool grey
 
         var panel = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
 
@@ -314,7 +355,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
             FontFamily = font,
             FontSize = 17,
             FontWeight = FontWeights.SemiBold,
-            Foreground = new SolidColorBrush(Color.FromRgb(0x1B, 0x18, 0x13)),
+            Foreground = new SolidColorBrush(Color.FromRgb(0x10, 0x18, 0x28)),
             HorizontalAlignment = HorizontalAlignment.Center
         });
         panel.Children.Add(new TextBlock
@@ -332,7 +373,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
             Width = 240,
             Height = 4,
             Foreground = accent,
-            Background = new SolidColorBrush(Color.FromRgb(0xF4, 0xEF, 0xE4)),
+            Background = new SolidColorBrush(Color.FromRgb(0xEF, 0xF1, 0xF4)),
             BorderThickness = new Thickness(0)
         });
 
@@ -370,6 +411,8 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
 
     private void ShowSplash()
     {
+        if (SuppressSplash)
+            return; // the welcome screen is showing the connecting state instead
         _splash ??= BuildSplash();
         _splash.Show();
         _splash.Activate();

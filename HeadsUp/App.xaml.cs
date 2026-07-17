@@ -117,12 +117,24 @@ public partial class App : Application
     private void ShowWelcome(ConnectionGate? connectionGate)
     {
         var welcome = _host!.Services.GetRequiredService<WelcomeWindow>();
+        var webViewProvider = _host.Services.GetService<ISlackCredentialProvider>() as WebView2SlackCredentialProvider;
 
-        // Connecting is the one action that starts the Slack connection.
+        // Connecting starts the Slack connection. While the welcome shows its own connecting
+        // state, suppress the provider's duplicate "Connecting…" splash.
         if (welcome.DataContext is WelcomeViewModel vm)
-            vm.ConnectRequested += (_, _) => connectionGate?.Open();
+            vm.ConnectRequested += (_, _) =>
+            {
+                if (webViewProvider is not null)
+                    webViewProvider.SuppressSplash = true;
+                connectionGate?.Open();
+            };
 
-        welcome.Closed += (_, _) => MarkWelcomed();
+        welcome.Closed += (_, _) =>
+        {
+            if (webViewProvider is not null)
+                webViewProvider.SuppressSplash = false;
+            MarkWelcomed();
+        };
         welcome.Show();
         welcome.Activate();
     }

@@ -35,6 +35,10 @@ public sealed partial class AppStatus : ObservableObject
     [ObservableProperty]
     private string _credentialSource = string.Empty;
 
+    /// <summary>True while the embedded Slack sign-in window is up waiting for the user.</summary>
+    [ObservableProperty]
+    private bool _needsSignIn;
+
     /// <summary>Convenience setter for the detection source to report a connection change.</summary>
     public void SetConnection(bool connected, string message)
     {

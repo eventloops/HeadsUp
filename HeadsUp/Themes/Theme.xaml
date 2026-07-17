@@ -2,28 +2,29 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ============================================================
-         Heads-Up identity — signal amber on warm ink (light surfaces).
+         Heads-Up identity — signal amber accent on clean light greys.
          Accent is a ladder: amber = attention, green = join, red = priority.
+         Neutrals stay cool and light; amber is the one warm pop.
          ============================================================ -->
 
     <!-- Ground & surfaces -->
-    <Color x:Key="BgColor">#FBF8F1</Color>
+    <Color x:Key="BgColor">#F5F6F8</Color>
     <SolidColorBrush x:Key="BrushBg" Color="{StaticResource BgColor}"/>
     <SolidColorBrush x:Key="BrushSurface" Color="#FFFFFF"/>
-    <SolidColorBrush x:Key="BrushSurface2" Color="#F4EFE4"/>
-    <SolidColorBrush x:Key="BrushLine" Color="#E7DFCF"/>
+    <SolidColorBrush x:Key="BrushSurface2" Color="#EFF1F4"/>
+    <SolidColorBrush x:Key="BrushLine" Color="#E5E7EB"/>
 
     <!-- Text -->
-    <SolidColorBrush x:Key="BrushText" Color="#1B1813"/>
-    <SolidColorBrush x:Key="BrushMuted" Color="#6C6353"/>
-    <SolidColorBrush x:Key="BrushFaint" Color="#9A9080"/>
+    <SolidColorBrush x:Key="BrushText" Color="#101828"/>
+    <SolidColorBrush x:Key="BrushMuted" Color="#667085"/>
+    <SolidColorBrush x:Key="BrushFaint" Color="#98A2B3"/>
 
     <!-- Signal amber (brand) -->
     <Color x:Key="AccentColor">#F5A623</Color>
     <SolidColorBrush x:Key="BrushAccent" Color="{StaticResource AccentColor}"/>
     <SolidColorBrush x:Key="BrushAccentPress" Color="#E3960C"/>
     <SolidColorBrush x:Key="BrushAccentInk" Color="#1A1509"/>
-    <SolidColorBrush x:Key="BrushAccentSoft" Color="#FFF3DE"/>
+    <SolidColorBrush x:Key="BrushAccentSoft" Color="#FFF4E1"/>
     <SolidColorBrush x:Key="BrushAccentText" Color="#B9740A"/>
 
     <!-- Semantic: join / priority -->
