@@ -140,3 +140,49 @@ integration work to whoever produces the events.
    do the feasibility check (see verdict above) before building.
 
 Everything else is opportunistic and depends on who actually asks for it.
+
+## UI implications of multiple connectors
+
+The core can run N connectors; the UI is still shaped for one. Almost none of this
+matters until a **second** connector actually lands — with Slack-only, today's UI is
+correct, and the data model is already source-aware, so these can be built alongside the
+connector that forces them rather than up front.
+
+**Already adapted**
+
+- The dashboard **Overview** status card is an `ItemsControl` over `Status.Sources`, so it
+  renders one card per connector automatically.
+- Settings are namespaced by source (`MutedChannel.Source`, `Priority:Users` by source), so
+  the model is ready even where the UI doesn't surface the source yet.
+
+**Needs real design when connector #2 arrives**
+
+- **Connect / sign-in flow — the big one.** The first-run welcome ("Connect to Slack"), the
+  tray *Connect* action, and `ConnectionGate` + the WebView2 sign-in are all Slack-specific.
+  A second connector brings a *different* auth flow (e.g. Teams OAuth consent looks nothing
+  like Slack's embedded sign-in), so this needs a real rethink — per-connector connect state
+  and per-connector sign-in — not a tweak.
+- **Priority-people directory.** The editor searches exactly one workspace directory
+  (hardcoded to `slack`). Two connectors need a connector picker or per-connector sections,
+  since each connector is a separate address book.
+- **Source badges.** Recent-alert rows and muted-channel chips don't show which connector
+  they belong to. Fine at N=1, confusing at N≥2. `AlertHistoryItem` already exposes
+  `SourceId`, so a small badge/icon is cheap when wanted.
+
+**Cosmetic / terminology (also only matters at N≥2)**
+
+- Strings assume Slack: "Open in Slack" tooltips, the "Huddles" toggle (Teams has no
+  huddles), "workspace." The alert popup also doesn't indicate its source — a small
+  connector glyph would help disambiguate.
+
+**Missing entirely**
+
+- There's no in-app way to enable/disable connectors — it's `Detection:Connectors` in the
+  config file only. A **connectors settings page** is the natural home for that, and where
+  the per-connector connect/sign-in flow would live.
+
+**Recommendation:** don't build speculative multi-connector UI while N=1 — you'd be guessing
+against a connector whose auth and terminology aren't pinned down yet, and likely rework it.
+The one arguable early win is source badges on alert rows and the popup, purely so the
+"it's multi-source" story reads honestly — but even that can wait for a real second source
+to style against.
