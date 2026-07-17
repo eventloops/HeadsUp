@@ -16,4 +16,8 @@
     <PackageReference Include="SlackNet.Extensions.DependencyInjection" Version="0.17.10" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="HeadsUp.Tests" />
+  </ItemGroup>
+
 </Project>
