@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using HeadsUp.Configuration;
 using HeadsUp.Services;
 using System.Collections.ObjectModel;
 
@@ -13,7 +14,9 @@ public sealed partial class DashboardViewModel : ObservableObject
 {
     private readonly IUserDirectory _directory;
     private readonly IPrioritySettingsStore _priorityStore;
+    private readonly IAlertSettingsStore _alertStore;
     private IReadOnlyList<DirectoryUser> _allUsers = Array.Empty<DirectoryUser>();
+    private bool _loadingAlerts;
 
     /// <summary>Live app status - bound directly by the view.</summary>
     public AppStatus Status { get; }
@@ -33,11 +36,77 @@ public sealed partial class DashboardViewModel : ObservableObject
     [ObservableProperty]
     private string _directoryStatus = string.Empty;
 
-    public DashboardViewModel(AppStatus status, IUserDirectory directory, IPrioritySettingsStore priorityStore)
+    // "Notify me about" settings, persisted to the Alerts config section.
+    [ObservableProperty]
+    private bool _notifyHuddles;
+
+    [ObservableProperty]
+    private bool _notifyMentions;
+
+    [ObservableProperty]
+    private bool _notifyDirectMessages;
+
+    [ObservableProperty]
+    private bool _notifyKeywords;
+
+    [ObservableProperty]
+    private string _keywordsText = string.Empty;
+
+    public DashboardViewModel(
+        AppStatus status,
+        IUserDirectory directory,
+        IPrioritySettingsStore priorityStore,
+        IAlertSettingsStore alertStore)
     {
         Status = status;
         _directory = directory;
         _priorityStore = priorityStore;
+        _alertStore = alertStore;
+        LoadAlerts();
+    }
+
+    private void LoadAlerts()
+    {
+        _loadingAlerts = true;
+        var a = _alertStore.Current;
+        NotifyHuddles = a.Huddles;
+        NotifyMentions = a.Mentions;
+        NotifyDirectMessages = a.DirectMessages;
+        NotifyKeywords = a.Keywords;
+        KeywordsText = string.Join(", ", a.KeywordList);
+        _loadingAlerts = false;
+    }
+
+    partial void OnNotifyHuddlesChanged(bool value) => _ = SaveAlertsAsync();
+    partial void OnNotifyMentionsChanged(bool value) => _ = SaveAlertsAsync();
+    partial void OnNotifyDirectMessagesChanged(bool value) => _ = SaveAlertsAsync();
+    partial void OnNotifyKeywordsChanged(bool value) => _ = SaveAlertsAsync();
+    partial void OnKeywordsTextChanged(string value) => _ = SaveAlertsAsync();
+
+    private async Task SaveAlertsAsync()
+    {
+        if (_loadingAlerts)
+            return;
+
+        var options = new AlertOptions
+        {
+            Huddles = NotifyHuddles,
+            Mentions = NotifyMentions,
+            DirectMessages = NotifyDirectMessages,
+            Keywords = NotifyKeywords,
+            KeywordList = KeywordsText
+                .Split(new[] { ',', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList()
+        };
+
+        try
+        {
+            await _alertStore.SaveAsync(options);
+        }
+        catch (Exception ex)
+        {
+            DirectoryStatus = $"Couldn't save alert settings: {ex.Message}";
+        }
     }
 
     /// <summary>Loads the directory and current priority list. Called when the window opens.</summary>

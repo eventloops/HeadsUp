@@ -28,8 +28,9 @@ public static class ServiceCollectionExtensions
         var detection = configuration.GetSection(DetectionOptions.SectionName).Get<DetectionOptions>() ?? new();
         services.AddSingleton(new AppStatus { Mode = detection.Mode, StatusMessage = "Starting…" });
 
-        // Persists priority-user edits back to appsettings.Local.json (hot-reloaded).
+        // Persist dashboard edits back to appsettings.Local.json (hot-reloaded).
         services.AddSingleton<IPrioritySettingsStore, JsonPrioritySettingsStore>();
+        services.AddSingleton<IAlertSettingsStore, JsonAlertSettingsStore>();
 
         services.AddHostedService<HuddleNotificationCoordinator>();
 
