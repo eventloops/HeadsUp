@@ -37,6 +37,8 @@ Heads-Up is built around **connectors** — each one watches a chat service and 
 same alert pipeline. Slack is the first (and today the only) connector; the architecture
 is ready for others (Teams, Discord) to slot in alongside it without touching the core.
 You list the connectors to run in `appsettings.json` (see [Configure](#configure)).
+Future connector options and what each would take are sketched in
+[docs/connectors.md](docs/connectors.md).
 
 The Slack connector itself has two routes — and today only the first is live.
 
