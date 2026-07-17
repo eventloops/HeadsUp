@@ -20,6 +20,10 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Give every window the dark OS title bar to match the dark theme.
+        EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent,
+            new RoutedEventHandler((s, _) => TryEnableDarkTitleBar((Window)s)));
+
         _host = Program.CreateHostBuilder(e.Args).Build();
 
         // Wire the tray view model to the running host status.
@@ -155,6 +159,20 @@ public partial class App : Application
             System.IO.File.WriteAllText(path, DateTimeOffset.Now.ToString("o"));
         }
         catch { /* best effort; worst case the welcome shows again next launch */ }
+    }
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+
+    private static void TryEnableDarkTitleBar(Window window)
+    {
+        try
+        {
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(window).EnsureHandle();
+            int useDark = 1; // DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+            DwmSetWindowAttribute(hwnd, 20, ref useDark, sizeof(int));
+        }
+        catch { /* older Windows without the attribute; harmless */ }
     }
 
     protected override async void OnExit(ExitEventArgs e)

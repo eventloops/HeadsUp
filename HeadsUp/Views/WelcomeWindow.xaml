@@ -6,7 +6,7 @@
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI" FontSize="13"
-        Background="{StaticResource BrushBg}">
+        Background="{StaticResource BrushBg}" Foreground="{StaticResource BrushText}">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <!-- Toggle switch: a restyled CheckBox, green when on -->

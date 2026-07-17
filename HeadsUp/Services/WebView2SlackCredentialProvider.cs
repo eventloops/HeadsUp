@@ -328,7 +328,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
     {
         var font = new FontFamily("Segoe UI");
         var accent = new SolidColorBrush(Color.FromRgb(0xF5, 0xA6, 0x23)); // signal amber
-        var muted = new SolidColorBrush(Color.FromRgb(0x66, 0x70, 0x85));  // cool grey
+        var muted = new SolidColorBrush(Color.FromRgb(0xA7, 0x9E, 0x8D));  // warm grey (dark theme)
 
         var panel = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
 
@@ -355,7 +355,7 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
             FontFamily = font,
             FontSize = 17,
             FontWeight = FontWeights.SemiBold,
-            Foreground = new SolidColorBrush(Color.FromRgb(0x10, 0x18, 0x28)),
+            Foreground = new SolidColorBrush(Color.FromRgb(0xF4, 0xEE, 0xE3)),
             HorizontalAlignment = HorizontalAlignment.Center
         });
         panel.Children.Add(new TextBlock
@@ -373,13 +373,13 @@ public sealed class WebView2SlackCredentialProvider : ISlackCredentialProvider
             Width = 240,
             Height = 4,
             Foreground = accent,
-            Background = new SolidColorBrush(Color.FromRgb(0xEF, 0xF1, 0xF4)),
+            Background = new SolidColorBrush(Color.FromRgb(0x2D, 0x29, 0x21)),
             BorderThickness = new Thickness(0)
         });
 
         var card = new Border
         {
-            Background = System.Windows.Media.Brushes.White,
+            Background = new SolidColorBrush(Color.FromRgb(0x23, 0x20, 0x1B)),
             CornerRadius = new CornerRadius(14),
             Padding = new Thickness(44, 34, 44, 36),
             Margin = new Thickness(24), // leaves room for the drop shadow

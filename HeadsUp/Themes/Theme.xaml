@@ -2,42 +2,107 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ============================================================
-         Heads-Up identity — signal amber accent on clean light greys.
+         Heads-Up identity — signal amber on warm ink (dark theme).
          Accent is a ladder: amber = attention, green = join, red = priority.
-         Neutrals stay cool and light; amber is the one warm pop.
          ============================================================ -->
 
     <!-- Ground & surfaces -->
-    <Color x:Key="BgColor">#F5F6F8</Color>
+    <Color x:Key="BgColor">#1A1712</Color>
     <SolidColorBrush x:Key="BrushBg" Color="{StaticResource BgColor}"/>
-    <SolidColorBrush x:Key="BrushSurface" Color="#FFFFFF"/>
-    <SolidColorBrush x:Key="BrushSurface2" Color="#EFF1F4"/>
-    <SolidColorBrush x:Key="BrushLine" Color="#E5E7EB"/>
+    <SolidColorBrush x:Key="BrushSurface" Color="#23201B"/>
+    <SolidColorBrush x:Key="BrushSurface2" Color="#2D2921"/>
+    <SolidColorBrush x:Key="BrushLine" Color="#3A342C"/>
 
     <!-- Text -->
-    <SolidColorBrush x:Key="BrushText" Color="#101828"/>
-    <SolidColorBrush x:Key="BrushMuted" Color="#667085"/>
-    <SolidColorBrush x:Key="BrushFaint" Color="#98A2B3"/>
+    <SolidColorBrush x:Key="BrushText" Color="#F4EEE3"/>
+    <SolidColorBrush x:Key="BrushMuted" Color="#A79E8D"/>
+    <SolidColorBrush x:Key="BrushFaint" Color="#756D5E"/>
 
     <!-- Signal amber (brand) -->
     <Color x:Key="AccentColor">#F5A623</Color>
     <SolidColorBrush x:Key="BrushAccent" Color="{StaticResource AccentColor}"/>
-    <SolidColorBrush x:Key="BrushAccentPress" Color="#E3960C"/>
+    <SolidColorBrush x:Key="BrushAccentPress" Color="#FFBC42"/>
     <SolidColorBrush x:Key="BrushAccentInk" Color="#1A1509"/>
-    <SolidColorBrush x:Key="BrushAccentSoft" Color="#FFF4E1"/>
-    <SolidColorBrush x:Key="BrushAccentText" Color="#B9740A"/>
+    <SolidColorBrush x:Key="BrushAccentSoft" Color="#3C2D13"/>
+    <SolidColorBrush x:Key="BrushAccentText" Color="#FFC24D"/>
 
     <!-- Semantic: join / priority -->
-    <SolidColorBrush x:Key="BrushJoin" Color="#1AA35A"/>
-    <SolidColorBrush x:Key="BrushJoinPress" Color="#178A4C"/>
-    <SolidColorBrush x:Key="BrushPriority" Color="#E5463C"/>
-    <SolidColorBrush x:Key="BrushPriorityPress" Color="#CB3B32"/>
+    <SolidColorBrush x:Key="BrushJoin" Color="#2FBF6A"/>
+    <SolidColorBrush x:Key="BrushJoinPress" Color="#26A85C"/>
+    <SolidColorBrush x:Key="BrushPriority" Color="#F0453B"/>
+    <SolidColorBrush x:Key="BrushPriorityPress" Color="#D53B32"/>
     <SolidColorBrush x:Key="BrushGold" Color="#FFD24A"/>
+    <SolidColorBrush x:Key="BrushDangerSoft" Color="#3A211E"/>
+
+    <!-- ============================================================
+         Default control theming so unstyled controls read on dark.
+         (Default text colour is set per-window via Foreground, so button
+         content still picks up each button's own Foreground.)
+         ============================================================ -->
+    <Style TargetType="TextBox">
+        <Setter Property="Background" Value="{StaticResource BrushSurface2}"/>
+        <Setter Property="Foreground" Value="{StaticResource BrushText}"/>
+        <Setter Property="CaretBrush" Value="{StaticResource BrushText}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BrushLine}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding" Value="7,5"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7">
+                        <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
+                                      VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter Property="BorderBrush" Value="{StaticResource BrushAccent}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{StaticResource BrushText}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <StackPanel Orientation="Horizontal" Background="Transparent">
+                        <Border x:Name="box" Width="19" Height="19" CornerRadius="5" VerticalAlignment="Center"
+                                Background="{StaticResource BrushSurface2}"
+                                BorderBrush="{StaticResource BrushLine}" BorderThickness="1.4">
+                            <Path x:Name="check" Data="M4.5,9.5 L8,13 L14.5,5.5" Stretch="None"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Stroke="{StaticResource BrushAccentInk}" StrokeThickness="2"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                  Visibility="Collapsed"/>
+                        </Border>
+                        <ContentPresenter Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="box" Property="Background" Value="{StaticResource BrushAccent}"/>
+                            <Setter TargetName="box" Property="BorderBrush" Value="{StaticResource BrushAccent}"/>
+                            <Setter TargetName="check" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="box" Property="BorderBrush" Value="{StaticResource BrushAccent}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
 
     <!-- ============================================================
          "The Rise" mark — amber up-chevron + dot. Variants by colour so
          usage stays a one-liner: <Image Source="{StaticResource MarkAmber}"/>.
-         The Image auto-fits the drawing bounds, so it scales cleanly.
          ============================================================ -->
     <DrawingImage x:Key="MarkAmber">
         <DrawingImage.Drawing>

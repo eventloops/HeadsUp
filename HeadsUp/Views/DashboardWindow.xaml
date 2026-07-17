@@ -5,7 +5,7 @@
         Width="560" Height="760" MinWidth="480" MinHeight="560"
         WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI" FontSize="13" TextOptions.TextFormattingMode="Ideal"
-        Background="{StaticResource BrushBg}">
+        Background="{StaticResource BrushBg}" Foreground="{StaticResource BrushText}">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <Style x:Key="Card" TargetType="Border">
@@ -31,12 +31,6 @@
         </Style>
         <Style x:Key="Faint" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource BrushFaint}"/>
-        </Style>
-        <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource BrushText}"/>
-        </Style>
-        <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="{StaticResource BrushText}"/>
         </Style>
 
         <!-- Accent (Add) button — amber with ink text -->
@@ -73,7 +67,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="#FFFBECEA"/>
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource BrushDangerSoft}"/>
                                 <Setter TargetName="c" Property="TextElement.Foreground" Value="{StaticResource BrushPriority}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>

@@ -6,14 +6,11 @@
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI" FontSize="13"
-        Background="{StaticResource BrushBg}">
+        Background="{StaticResource BrushBg}" Foreground="{StaticResource BrushText}">
     <Window.Resources>
         <Style x:Key="Muted" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource BrushMuted}"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
-        </Style>
-        <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource BrushText}"/>
         </Style>
         <Style TargetType="Button">
             <Setter Property="Foreground" Value="{StaticResource BrushAccentInk}"/>
