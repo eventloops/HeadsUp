@@ -11,9 +11,9 @@ notifications. Runs quietly in the system tray (Windows) or menu bar (macOS).
 
 | Project | Purpose |
 |---|---|
-| `SlackHuddleNotifier.Core` | Slack connection + huddle detection (cross-platform) |
-| `SlackHuddleNotifier` | Windows app (WPF) |
-| `SlackHuddleNotifier.Avalonia` | macOS / Linux app (also runs on Windows) |
+| `HeadsUp.Core` | Slack connection + huddle detection (cross-platform) |
+| `HeadsUp` | Windows app (WPF) |
+| `HeadsUp.Avalonia` | macOS / Linux app (also runs on Windows) |
 
 ---
 
@@ -32,14 +32,14 @@ notifications. Runs quietly in the system tray (Windows) or menu bar (macOS).
 ### Windows
 
 ```powershell
-git clone https://procode.ghe.com/Procode/SlackHuddleNotifier
-cd SlackHuddleNotifier
+git clone https://procode.ghe.com/Procode/HeadsUp
+cd HeadsUp
 .\install.ps1              # install or upgrade
 .\install.ps1 -Autostart   # also run at logon
 .\install.ps1 -Uninstall   # remove everything
 ```
 
-Installs to `%LocalAppData%\Programs\SlackHuddleNotifier` with a Start Menu
+Installs to `%LocalAppData%\Programs\HeadsUp` with a Start Menu
 shortcut. Your `appsettings.json` is preserved when you re-run the script.
 
 #### "Running scripts is disabled on this system"
@@ -66,14 +66,14 @@ locally cloned files like this one run fine.
 ### macOS (and Linux)
 
 ```bash
-git clone https://procode.ghe.com/Procode/SlackHuddleNotifier
-cd SlackHuddleNotifier
+git clone https://procode.ghe.com/Procode/HeadsUp
+cd HeadsUp
 ./install.sh               # install or upgrade
 ./install.sh --autostart   # also run at login (macOS LaunchAgent)
 ./install.sh --uninstall   # remove everything
 ```
 
-Installs to `~/Applications/SlackHuddleNotifier`. The build RID is
+Installs to `~/Applications/HeadsUp`. The build RID is
 auto-detected (Apple Silicon vs Intel).
 
 ## Three detection modes
@@ -170,7 +170,7 @@ rotates (SSO especially), so verify end-to-end. Start the app from a terminal
 and watch the log:
 
 ```powershell
-Get-Content -Wait "$env:LocalAppData\SlackHuddleNotifier\logs\log-*.txt" |
+Get-Content -Wait "$env:LocalAppData\HeadsUp\logs\log-*.txt" |
   Select-String "session OK","WebSocket","Huddle","rtm","auth.test"
 ```
 
@@ -220,14 +220,14 @@ preserved. It starts at *sign-in*, not machine boot, as befits a per-user app.
 Preview the popup without any tokens configured:
 
 ```
-SlackHuddleNotifier.exe --test-popup              # standard
-SlackHuddleNotifier.exe --test-popup --priority   # priority variant
+HeadsUp.exe --test-popup              # standard
+HeadsUp.exe --test-popup --priority   # priority variant
 ```
 
 On macOS the tray menu also has a **Test notification** item.
 
 ## Logs
 
-`%LocalAppData%\SlackHuddleNotifier\logs` (Windows) or
-`~/.local/share/SlackHuddleNotifier/logs` (macOS/Linux) —
+`%LocalAppData%\HeadsUp\logs` (Windows) or
+`~/.local/share/HeadsUp/logs` (macOS/Linux) —
 rolling daily files, 7 kept.

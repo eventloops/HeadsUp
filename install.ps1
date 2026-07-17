@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Publishes the WPF head as a self-contained build (no .NET runtime install
-    needed) into %LocalAppData%\Programs\SlackHuddleNotifier, adds a Start Menu
+    needed) into %LocalAppData%\Programs\HeadsUp, adds a Start Menu
     shortcut, and optionally a Startup-folder shortcut so it launches at logon.
 
     An existing appsettings.json (your Slack tokens) is preserved on upgrade.
@@ -29,12 +29,12 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $appName      = 'Slack Huddle Notifier'
-$installDir   = Join-Path $env:LOCALAPPDATA 'Programs\SlackHuddleNotifier'
-$exePath      = Join-Path $installDir 'SlackHuddleNotifier.exe'
+$installDir   = Join-Path $env:LOCALAPPDATA 'Programs\HeadsUp'
+$exePath      = Join-Path $installDir 'HeadsUp.exe'
 $startMenuLnk = Join-Path ([Environment]::GetFolderPath('Programs')) "$appName.lnk"
 $startupLnk   = Join-Path ([Environment]::GetFolderPath('Startup'))  "$appName.lnk"
 $repoRoot     = Split-Path -Parent $MyInvocation.MyCommand.Path
-$project      = Join-Path $repoRoot 'SlackHuddleNotifier\SlackHuddleNotifier.csproj'
+$project      = Join-Path $repoRoot 'HeadsUp\HeadsUp.csproj'
 
 function New-Shortcut([string]$linkPath, [string]$target) {
     $shell = New-Object -ComObject WScript.Shell
@@ -46,7 +46,7 @@ function New-Shortcut([string]$linkPath, [string]$target) {
 }
 
 if ($Uninstall) {
-    Get-Process SlackHuddleNotifier -ErrorAction SilentlyContinue | Stop-Process -Force
+    Get-Process HeadsUp -ErrorAction SilentlyContinue | Stop-Process -Force
     foreach ($item in @($installDir, $startMenuLnk, $startupLnk)) {
         if (Test-Path $item) {
             Remove-Item $item -Recurse -Force
@@ -70,7 +70,7 @@ if (Test-Path $existingSettings) {
     Write-Host "Preserving existing appsettings.json."
 }
 
-Get-Process SlackHuddleNotifier -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process HeadsUp -ErrorAction SilentlyContinue | Stop-Process -Force
 New-Item -ItemType Directory -Force $installDir | Out-Null
 Remove-Item "$installDir\*" -Recurse -Force
 Copy-Item "$staging\*" $installDir -Recurse -Force

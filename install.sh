@@ -2,7 +2,7 @@
 # Per-user install of Slack Huddle Notifier (macOS/Linux). No sudo required.
 #
 # Publishes the Avalonia head as a self-contained build (no .NET runtime
-# install needed) into ~/Applications/SlackHuddleNotifier and optionally
+# install needed) into ~/Applications/HeadsUp and optionally
 # registers a LaunchAgent so it starts at login (macOS).
 #
 # An existing appsettings.json (your Slack tokens) is preserved on upgrade.
@@ -13,13 +13,13 @@
 #   ./install.sh --uninstall    # remove everything
 set -euo pipefail
 
-APP_NAME="SlackHuddleNotifier"
+APP_NAME="HeadsUp"
 INSTALL_DIR="$HOME/Applications/$APP_NAME"
-EXE="$INSTALL_DIR/SlackHuddleNotifier.Avalonia"
+EXE="$INSTALL_DIR/HeadsUp.Avalonia"
 PLIST_LABEL="com.procode.slackhuddlenotifier"
 PLIST_PATH="$HOME/Library/LaunchAgents/$PLIST_LABEL.plist"
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
-PROJECT="$REPO_ROOT/SlackHuddleNotifier.Avalonia/SlackHuddleNotifier.Avalonia.csproj"
+PROJECT="$REPO_ROOT/HeadsUp.Avalonia/HeadsUp.Avalonia.csproj"
 
 AUTOSTART=false
 UNINSTALL=false
