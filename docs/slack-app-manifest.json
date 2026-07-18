@@ -1,0 +1,37 @@
+{
+  "display_information": {
+    "name": "Heads-Up",
+    "description": "Unmissable desktop alerts for huddles, mentions and DMs.",
+    "background_color": "#1a1614"
+  },
+  "oauth_config": {
+    "redirect_urls": [
+      "http://localhost:32741/callback"
+    ],
+    "scopes": {
+      "user": [
+        "channels:history",
+        "groups:history",
+        "im:history",
+        "mpim:history",
+        "channels:read",
+        "groups:read",
+        "im:read",
+        "mpim:read",
+        "users:read"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "user_events": [
+        "message.channels",
+        "message.groups",
+        "message.im",
+        "message.mpim"
+      ]
+    },
+    "socket_mode_enabled": true,
+    "token_rotation_enabled": true
+  }
+}

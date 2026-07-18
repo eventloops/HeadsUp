@@ -13,8 +13,10 @@ public sealed class DetectionOptions
     /// "SlackClientApi" - the current prototype: a browser/desktop session (xoxc token + "d"
     ///   cookie, obtained via an embedded Slack sign-in); no Slack app and no admin approval,
     ///   but unofficial and undocumented. Cross-platform.
-    /// "SlackApi" - the goal: a proper admin-approved Slack app using your own OAuth tokens.
-    ///   Robust and sanctioned; becomes the default once app permission is granted.
+    /// "SlackApi" - the sanctioned path: your own Slack app, Socket Mode, and a user OAuth
+    ///   token obtained with PKCE (no client secret, nothing hosted). Documented and stable,
+    ///   at the cost of a one-time app setup per user - Slack only mints the app-level token
+    ///   Socket Mode needs from its own config UI. See docs/slack-app-setup.md.
     /// When left empty, <see cref="ResolveConnectors"/> defaults to a single SlackClientApi
     /// connector so the app works out of the box.
     /// </summary>

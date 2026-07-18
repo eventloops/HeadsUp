@@ -95,6 +95,24 @@ internal static class Program
                     }
                 }
 
+                // The sanctioned Slack-app path signs in through the browser with PKCE and
+                // stores its tokens encrypted, so it replaces the config-file provider that
+                // AddConnector would otherwise TryAdd. Registered here rather than in
+                // Infrastructure because at-rest encryption is platform-specific (DPAPI).
+                var wantsSlackApi = connectors.Any(c =>
+                    string.Equals(c.Type, DetectionOptions.SlackApi, StringComparison.OrdinalIgnoreCase));
+                if (wantsSlackApi)
+                {
+                    services.AddSingleton<ConnectionGate>();
+                    services.AddSingleton<ITokenProtector, DpapiTokenProtector>();
+                    services.AddSingleton<ISlackTokenStore, FileSlackTokenStore>();
+                    services.AddSingleton<IBrowserLauncher, SystemBrowserLauncher>();
+                    services.AddSingleton<ISlackAppSetupPrompt, WpfSlackAppSetupPrompt>();
+                    services.AddSingleton<LoopbackOAuthListener>();
+                    services.AddHttpClient<SlackOAuthClient>();
+                    services.AddSingleton<ISlackAppCredentialProvider, OAuthSlackAppCredentialProvider>();
+                }
+
                 foreach (var connector in connectors)
                     services.AddConnector(ctx.Configuration, connector);
 

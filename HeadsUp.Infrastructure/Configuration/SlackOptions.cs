@@ -4,6 +4,13 @@ public sealed class SlackOptions
 {
     public const string SectionName = "Slack";
 
+    /// <summary>
+    /// The Slack app's client id. Not a secret — it identifies the app when starting the
+    /// PKCE OAuth flow. Each user creates their own app (one app-level token cannot be
+    /// shared across machines), so this is per-install rather than shipped with Heads-Up.
+    /// </summary>
+    public string ClientId { get; set; } = string.Empty;
+
     /// <summary>Socket Mode app-level token (xapp-...).</summary>
     public string AppToken { get; set; } = string.Empty;
 

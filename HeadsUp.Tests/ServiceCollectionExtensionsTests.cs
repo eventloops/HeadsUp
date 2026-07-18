@@ -97,6 +97,67 @@ public class ServiceCollectionExtensionsTests
         Assert.Contains(provider.GetServices<IHostedService>(), s => s is SlackHuddleMonitor);
     }
 
+    [Fact]
+    public void Slack_api_mode_defaults_to_config_credentials_and_the_api_directory()
+    {
+        using var provider = BuildSlackApiProvider();
+
+        // Priority-people search needs an address book in this mode too, not just client-API mode.
+        Assert.IsType<SlackApiUserDirectory>(provider.GetRequiredService<IUserDirectory>());
+        Assert.IsType<ConfigSlackAppCredentialProvider>(provider.GetRequiredService<ISlackAppCredentialProvider>());
+        Assert.IsType<SlackClientFactory>(provider.GetRequiredService<ISlackClientFactory>());
+    }
+
+    [Fact]
+    public void A_head_registered_app_credential_provider_wins_over_the_config_one()
+    {
+        // How the WPF head substitutes the OAuth provider for the appsettings one.
+        using var provider = BuildSlackApiProvider(s =>
+            s.AddSingleton<ISlackAppCredentialProvider, CustomAppCredentialProvider>());
+
+        Assert.IsType<CustomAppCredentialProvider>(provider.GetRequiredService<ISlackAppCredentialProvider>());
+    }
+
+    [Fact]
+    public async Task Config_app_credentials_are_withheld_until_both_tokens_are_present()
+    {
+        using var provider = BuildSlackApiProvider(config: Config(
+            ("Detection:Connectors:0:Type", "SlackApi"),
+            ("Slack:ClientId", "123.456"),
+            ("Slack:AppToken", "xapp-1"))); // no user token yet
+
+        var creds = await provider.GetRequiredService<ISlackAppCredentialProvider>()
+            .GetCredentialsAsync(false, CancellationToken.None);
+
+        Assert.Null(creds);
+    }
+
+    private static ServiceProvider BuildSlackApiProvider(
+        Action<IServiceCollection>? beforeCore = null, IConfiguration? config = null)
+    {
+        config ??= Config(
+            ("Detection:Connectors:0:Type", "SlackApi"),
+            ("Slack:ClientId", "123.456"),
+            ("Slack:AppToken", "xapp-1"),
+            ("Slack:UserToken", "xoxp-1"));
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<INotificationService, RecordingNotificationService>();
+        beforeCore?.Invoke(services);
+        services.AddHeadsUpApplication(config);
+        services.AddHeadsUpInfrastructure(config);
+        services.AddSlackApiHuddleDetection(config);
+        return services.BuildServiceProvider();
+    }
+
+    private sealed class CustomAppCredentialProvider : ISlackAppCredentialProvider
+    {
+        public string SourceDescription => "custom";
+        public Task<SlackAppCredentials?> GetCredentialsAsync(bool forceRefresh, CancellationToken ct) =>
+            Task.FromResult<SlackAppCredentials?>(null);
+    }
+
     private sealed class CustomCredentialProvider : ISlackCredentialProvider
     {
         public string SourceDescription => "custom";

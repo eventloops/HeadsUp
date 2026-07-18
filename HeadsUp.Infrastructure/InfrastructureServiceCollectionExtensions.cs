@@ -73,21 +73,27 @@ public static class InfrastructureServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Detection via the Slack API: Socket Mode with the user's tokens. The huddle monitor
-    /// doubles as the message event handler, so the same singleton is resolved for both roles.
+    /// Detection via the Slack API: Socket Mode with the user's own Slack app. The huddle
+    /// monitor doubles as the message event handler, so the same singleton is resolved for
+    /// both roles.
+    ///
+    /// Clients are built per connection rather than registered up front, because OAuth tokens
+    /// aren't known at startup and rotate afterwards — see <see cref="ISlackClientFactory"/>.
     /// </summary>
     public static IServiceCollection AddSlackApiHuddleDetection(
         this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<SlackOptions>(configuration.GetSection(SlackOptions.SectionName));
 
-        var slackOpts = configuration.GetSection(SlackOptions.SectionName).Get<SlackOptions>() ?? new();
-        services.AddSlackNet(c =>
-        {
-            c.UseApiToken(slackOpts.UserToken);
-            c.UseAppLevelToken(slackOpts.AppToken);
-            c.RegisterEventHandler<MessageEvent>(sp => sp.GetRequiredService<SlackHuddleMonitor>());
-        });
+        services.TryAddSingleton<ISlackClientFactory, SlackClientFactory>();
+
+        // Default credential source is static config (hand-pasted tokens). A platform head may
+        // register a live ISlackAppCredentialProvider (e.g. the PKCE OAuth one) BEFORE calling
+        // this, and TryAdd leaves that one in place.
+        services.TryAddSingleton<ISlackAppCredentialProvider, ConfigSlackAppCredentialProvider>();
+
+        // Workspace directory for choosing priority users by name (SlackApi mode).
+        services.TryAddSingleton<IUserDirectory, SlackApiUserDirectory>();
 
         services.AddSingleton<SlackHuddleMonitor>();
         services.AddSingleton<IAlertSource>(sp => sp.GetRequiredService<SlackHuddleMonitor>());

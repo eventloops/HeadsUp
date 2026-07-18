@@ -68,9 +68,10 @@ At-a-glance (all unverified):
 The sanctioned path is **Microsoft Graph** with delegated permissions (roughly
 `Chat.Read`, `ChannelMessage.Read.All`, `Presence.Read`). Realities to expect:
 
-- **Admin consent.** Most tenants require an admin to approve the app registration — a
-  different admin than the Slack one, but the same kind of gate we're already waiting on for
-  the sanctioned Slack app.
+- **Admin consent.** Most tenants require an admin to approve the app registration. Note this
+  is a *stronger* gate than the sanctioned Slack path turned out to need: Slack works with a
+  per-user app the user creates themselves (see [slack-app-setup.md](slack-app-setup.md)),
+  whereas Graph consent is genuinely tenant-wide and can't be worked around per user.
 - **No good unofficial route.** The Slack "borrow the browser session" trick has no clean
   Teams equivalent; the desktop client's tokens are brokered through Windows auth and far
   more hostile to reuse, and corporate Conditional Access makes it worse. Don't plan a
@@ -160,11 +161,14 @@ connector that forces them rather than up front.
 
 **Needs real design when connector #2 arrives**
 
-- **Connect / sign-in flow — the big one.** The first-run welcome ("Connect to Slack"), the
-  tray *Connect* action, and `ConnectionGate` + the WebView2 sign-in are all Slack-specific.
-  A second connector brings a *different* auth flow (e.g. Teams OAuth consent looks nothing
-  like Slack's embedded sign-in), so this needs a real rethink — per-connector connect state
-  and per-connector sign-in — not a tweak.
+- **Connect / sign-in flow — the big one.** The first-run welcome ("Connect to Slack") and the
+  tray *Connect* action are still Slack-specific. Some groundwork has landed: `ConnectionGate`
+  now lives in the application layer and is honored *through* the credential-provider seam
+  (`ISlackCredentialProvider` / `ISlackAppCredentialProvider`), so a connector supplies its own
+  sign-in without the detection source knowing anything about UI. Adding the SlackApi connector
+  proved this out — two very different auth flows (embedded WebView2 vs. browser PKCE + a setup
+  dialog) sit behind the same seam. What's still missing is *per-connector* connect state in
+  the UI, since the welcome screen and tray action assume a single "connected" notion.
 - **Priority-people directory.** The editor searches exactly one workspace directory
   (hardcoded to `slack`). Two connectors need a connector picker or per-connector sections,
   since each connector is a separate address book.

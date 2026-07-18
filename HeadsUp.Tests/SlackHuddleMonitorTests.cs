@@ -18,8 +18,10 @@ public class SlackHuddleMonitorTests
 
     private readonly ISlackSocketModeClient _socket = Substitute.For<ISlackSocketModeClient>();
     private readonly ISlackApiClient _api = Substitute.For<ISlackApiClient>();
+    private readonly ISlackClientFactory _clientFactory = Substitute.For<ISlackClientFactory>();
+    private readonly ISlackAppCredentialProvider _credentials = Substitute.For<ISlackAppCredentialProvider>();
 
-    private SlackOptions _slackOptions = new() { AppToken = "xapp-1", UserToken = "xoxp-1" };
+    private SlackAppCredentials? _creds = new("client-1", "xapp-1", "xoxp-1");
     private DetectionOptions _detectionOptions = new();
     private PriorityOptions _priorityOptions = new();
     private readonly AppStatus _status = new();
@@ -32,17 +34,28 @@ public class SlackHuddleMonitorTests
         KeywordList = ["deploy"]
     };
 
-    private SlackHuddleMonitor CreateMonitor() => new(
-        _socket,
-        _api,
-        new StaticMonitor<SlackOptions>(_slackOptions),
-        new StaticMonitor<DetectionOptions>(_detectionOptions),
-        new StaticMonitor<AlertOptions>(_alertOptions),
-        new StaticMonitor<PriorityOptions>(_priorityOptions),
-        _status,
-        NullLogger<SlackHuddleMonitor>.Instance);
+    private SlackHuddleMonitor CreateMonitor()
+    {
+        _credentials.GetCredentialsAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(_creds));
+        _clientFactory.Create(Arg.Any<SlackAppCredentials>(), Arg.Any<IEventHandler<MessageEvent>>())
+            .Returns(new SlackClients(_api, _socket));
 
-    /// <summary>Creates a monitor that has "connected": auth.test resolved self/team ids.</summary>
+        return new SlackHuddleMonitor(
+            _credentials,
+            _clientFactory,
+            new StaticMonitor<DetectionOptions>(_detectionOptions),
+            new StaticMonitor<AlertOptions>(_alertOptions),
+            new StaticMonitor<PriorityOptions>(_priorityOptions),
+            _status,
+            NullLogger<SlackHuddleMonitor>.Instance);
+    }
+
+    /// <summary>
+    /// Creates a monitor that has "connected": auth.test resolved self/team ids. Drives one
+    /// connection round directly rather than via the hosted-service loop — the substituted
+    /// socket reports Connected=false, so the round completes instead of holding open.
+    /// </summary>
     private async Task<SlackHuddleMonitor> StartedMonitor()
     {
         _api.Auth.Test().Returns(new AuthTestResponse { UserId = SelfId, TeamId = TeamId });
@@ -50,7 +63,7 @@ public class SlackHuddleMonitorTests
         SetupUser("U2", displayName: "Sarah Whitfield", image72: "https://img/72.png");
 
         var monitor = CreateMonitor();
-        await monitor.StartAsync(CancellationToken.None);
+        await monitor.ConnectAndRunAsync(false, CancellationToken.None);
         return monitor;
     }
 
@@ -74,14 +87,25 @@ public class SlackHuddleMonitorTests
     // ------------------------------------------------------------------
 
     [Fact]
-    public async Task Missing_tokens_skip_the_connection_entirely()
+    public async Task Missing_credentials_skip_the_connection_entirely()
     {
-        _slackOptions = new SlackOptions(); // no tokens
+        _creds = null; // not signed in yet
         var monitor = CreateMonitor();
 
-        await monitor.StartAsync(CancellationToken.None);
+        var ran = await monitor.ConnectAndRunAsync(false, CancellationToken.None);
 
+        Assert.False(ran); // signals the caller to force a refresh next round
         await _socket.DidNotReceiveWithAnyArgs().Connect();
+    }
+
+    [Fact]
+    public async Task Credentials_are_refreshed_when_the_caller_asks()
+    {
+        var monitor = CreateMonitor();
+
+        await monitor.ConnectAndRunAsync(true, CancellationToken.None);
+
+        await _credentials.Received(1).GetCredentialsAsync(true, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -99,29 +123,27 @@ public class SlackHuddleMonitorTests
         _api.Auth.Test().ThrowsAsync(new SlackException(new ErrorResponse { Error = "invalid_auth" }));
         var monitor = CreateMonitor();
 
-        await monitor.StartAsync(CancellationToken.None); // must not throw
+        await monitor.ConnectAndRunAsync(false, CancellationToken.None); // must not throw
     }
 
     [Fact]
-    public async Task Stop_disconnects_when_connected()
+    public async Task A_finished_connection_round_disconnects_the_socket()
     {
-        _socket.Connected.Returns(true);
-        var monitor = CreateMonitor();
-
-        await monitor.StopAsync(CancellationToken.None);
+        var monitor = await StartedMonitor();
 
         _socket.Received(1).Disconnect();
     }
 
     [Fact]
-    public async Task Stop_is_a_noop_when_not_connected()
+    public async Task Events_arriving_before_a_connection_are_ignored()
     {
-        _socket.Connected.Returns(false);
-        var monitor = CreateMonitor();
+        var monitor = CreateMonitor(); // never connected, so no API client is bound
+        Alert? raised = null;
+        monitor.AlertRaised += (_, a) => raised = a;
 
-        await monitor.StopAsync(CancellationToken.None);
+        await monitor.Handle(Huddle("U2", "C1")); // must not throw
 
-        _socket.DidNotReceive().Disconnect();
+        Assert.Null(raised);
     }
 
     // ------------------------------------------------------------------

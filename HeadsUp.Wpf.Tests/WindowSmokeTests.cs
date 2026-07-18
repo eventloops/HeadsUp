@@ -24,6 +24,11 @@ public class WindowSmokeTests
             Task.FromResult<DirectoryUser?>(null);
     }
 
+    private sealed class StubBrowser : IBrowserLauncher
+    {
+        public void Open(string url) { }
+    }
+
     private sealed class StubPriorityStore : IPrioritySettingsStore
     {
         public IReadOnlyList<string> CurrentUserIds(string sourceId) => Array.Empty<string>();
@@ -65,6 +70,12 @@ public class WindowSmokeTests
                 var connectingVm = new WelcomeViewModel(new StubAlertStore(), new AppStatus());
                 connectingVm.ConnectCommand.Execute(null);
                 ShowThenClose(new WelcomeWindow(connectingVm));
+
+                ShowThenClose(new SlackAppSetupWindow(new SlackAppSetupViewModel(new StubBrowser())));
+                // Also render the setup window's validation-error state.
+                var invalidVm = new SlackAppSetupViewModel(new StubBrowser()) { ClientId = "nope", AppToken = "nope" };
+                invalidVm.ConfirmCommand.Execute(null);
+                ShowThenClose(new SlackAppSetupWindow(invalidVm));
             }
             catch (Exception ex)
             {

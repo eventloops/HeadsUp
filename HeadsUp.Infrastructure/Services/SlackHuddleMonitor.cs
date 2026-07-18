@@ -12,17 +12,25 @@ namespace HeadsUp.Services;
 /// <summary>
 /// Connects to Slack via Socket Mode and raises <see cref="AlertRaised"/> whenever
 /// a huddle start is detected. Slack surfaces huddle starts as channel messages with
-/// subtype "huddle_thread" (and legacy calls as "sh_room_created"), so this class is
-/// registered with SlackNet as an <see cref="IEventHandler{MessageEvent}"/>.
+/// subtype "huddle_thread" (and legacy calls as "sh_room_created"), so this class registers
+/// itself with SlackNet as an <see cref="IEventHandler{MessageEvent}"/>.
+///
+/// This is the <b>sanctioned</b> path: a real Slack app, its own app-level token, and a user
+/// OAuth token. Credentials arrive from <see cref="ISlackAppCredentialProvider"/> rather than
+/// being read from config directly, because under OAuth they don't exist until the user signs
+/// in and they rotate afterwards — so the clients are built per connection attempt.
 /// </summary>
-public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEvent>, IHostedService
+public sealed class SlackHuddleMonitor : BackgroundService, IAlertSource, IEventHandler<MessageEvent>
 {
     /// <summary>Cooldown before a new huddle in the same channel fires another notification.</summary>
     private static readonly TimeSpan DedupeCooldown = TimeSpan.FromMinutes(5);
 
-    private readonly ISlackSocketModeClient _socketClient;
-    private readonly ISlackApiClient _apiClient;
-    private readonly IOptionsMonitor<SlackOptions> _slackOptions;
+    // Internal and instance-scoped so tests can shrink the waits.
+    internal TimeSpan _reconnectDelay = TimeSpan.FromSeconds(10);
+    internal TimeSpan _connectionPollInterval = TimeSpan.FromSeconds(15);
+
+    private readonly ISlackAppCredentialProvider _credentials;
+    private readonly ISlackClientFactory _clientFactory;
     private readonly IOptionsMonitor<DetectionOptions> _detectionOptions;
     private readonly IOptionsMonitor<AlertOptions> _alertOptions;
     private readonly IOptionsMonitor<PriorityOptions> _priorityOptions;
@@ -32,8 +40,10 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
     // Channel ID -> last time we notified for it, to avoid duplicate events.
     private readonly ConcurrentDictionary<string, DateTimeOffset> _recentHuddles = new();
 
-    private string? _teamId;
-    private string? _selfUserId;
+    // Bound once a connection is established; null until then, so event handling no-ops.
+    private ISlackApiClient? _apiClient;
+    internal string? _teamId;
+    internal string? _selfUserId;
 
     public SourceId SourceId => SlackSource.SourceId;
     public string SourceName => SlackSource.Name;
@@ -44,18 +54,16 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
     public event EventHandler<Alert>? AlertRaised;
 
     public SlackHuddleMonitor(
-        ISlackSocketModeClient socketClient,
-        ISlackApiClient apiClient,
-        IOptionsMonitor<SlackOptions> slackOptions,
+        ISlackAppCredentialProvider credentials,
+        ISlackClientFactory clientFactory,
         IOptionsMonitor<DetectionOptions> detectionOptions,
         IOptionsMonitor<AlertOptions> alertOptions,
         IOptionsMonitor<PriorityOptions> priorityOptions,
         AppStatus status,
         ILogger<SlackHuddleMonitor> logger)
     {
-        _socketClient = socketClient;
-        _apiClient = apiClient;
-        _slackOptions = slackOptions;
+        _credentials = credentials;
+        _clientFactory = clientFactory;
         _detectionOptions = detectionOptions;
         _alertOptions = alertOptions;
         _priorityOptions = priorityOptions;
@@ -63,23 +71,65 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
         _logger = logger;
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         Status.Mode = DetectionOptions.SlackApi;
-        Status.CredentialSource = "appsettings (Slack app tokens)";
+        Status.CredentialSource = _credentials.SourceDescription;
 
-        var slack = _slackOptions.CurrentValue;
-        if (string.IsNullOrWhiteSpace(slack.AppToken) ||
-            string.IsNullOrWhiteSpace(slack.UserToken))
+        // Outer loop: (re)acquire credentials, connect, then hold the connection until it
+        // drops. A missing or rejected credential forces a refresh next round, which is how
+        // OAuth token rotation is absorbed when a live provider is in play.
+        var refreshNext = false;
+        while (!stoppingToken.IsCancellationRequested)
         {
-            Status.SetConnection(false, "Slack tokens not configured");
-            _logger.LogWarning(
-                "Slack tokens are not configured. Edit appsettings.json and restart. " +
-                "AppToken (xapp-...) and UserToken (xoxp-...) are both required.");
-            return;
+            try
+            {
+                // ConnectAndRunAsync returns false when creds are missing/rejected.
+                refreshNext = !await ConnectAndRunAsync(refreshNext, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                Status.SetConnection(false, "Reconnecting…");
+                _logger.LogWarning(ex, "Slack Socket Mode connection ended; retrying in {Delay}s.",
+                    _reconnectDelay.TotalSeconds);
+                refreshNext = false;
+            }
+
+            try
+            {
+                await Task.Delay(_reconnectDelay, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Fetches credentials, opens one Socket Mode connection, and holds it until it drops.
+    /// Returns <c>false</c> when credentials are missing (caller should force a refresh next
+    /// round); <c>true</c> after a connection ran and ended of its own accord.
+    /// </summary>
+    internal async Task<bool> ConnectAndRunAsync(bool forceRefresh, CancellationToken stoppingToken)
+    {
+        var creds = await _credentials.GetCredentialsAsync(forceRefresh, stoppingToken);
+        if (creds is null)
+        {
+            Status.SetConnection(false, "Not signed in");
+            _logger.LogDebug("No Slack app credentials available yet; waiting.");
+            return false;
         }
 
-        await _socketClient.Connect(cancellationToken: cancellationToken);
+        var clients = _clientFactory.Create(creds, this);
+        _apiClient = clients.Api;
+        var socket = clients.Socket;
+
+        await socket.Connect(cancellationToken: stoppingToken);
         _logger.LogInformation("Connected to Slack via Socket Mode.");
         Status.SetConnection(true, "Watching for huddles");
 
@@ -94,18 +144,17 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
         {
             _logger.LogWarning(ex, "auth.test failed; huddle links will omit the team id.");
         }
-    }
 
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        if (_socketClient.Connected)
-        {
-            _socketClient.Disconnect();
-            Status.SetConnection(false, "Disconnected");
-            _logger.LogInformation("Disconnected from Slack.");
-        }
+        // SlackNet owns the socket's own retry logic, so all this loop does is notice a
+        // connection that has genuinely gone away and let the outer loop rebuild it with
+        // freshly-fetched (possibly rotated) credentials.
+        while (socket.Connected && !stoppingToken.IsCancellationRequested)
+            await Task.Delay(_connectionPollInterval, stoppingToken);
 
-        return Task.CompletedTask;
+        socket.Disconnect();
+        Status.SetConnection(false, "Disconnected");
+        _logger.LogInformation("Disconnected from Slack.");
+        return true;
     }
 
     // ------------------------------------------------------------------
@@ -114,6 +163,11 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
 
     public async Task Handle(MessageEvent slackEvent)
     {
+        // Events can only arrive over a live connection, which is also what binds the API
+        // client — but capture it once so a concurrent reconnect can't null it mid-handle.
+        if (_apiClient is not { } api)
+            return;
+
         var alerts = _alertOptions.CurrentValue;
         var prefs = alerts.ToPreferences();
 
@@ -128,17 +182,17 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
             _logger.LogDebug("Huddle-related message detected. Channel={Channel} Subtype={Subtype}",
                 slackEvent.Channel, slackEvent.Subtype);
 
-            await RaiseAlertAsync(slackEvent.User, slackEvent.Channel);
+            await RaiseAlertAsync(api, slackEvent.User, slackEvent.Channel);
             return;
         }
 
         // Only plain user messages (no subtype) are candidates for mention/DM/keyword
         // alerts - skip edits, deletes, joins, bot posts, etc.
         if (slackEvent.Subtype is null)
-            await HandleMessageAsync(slackEvent, prefs);
+            await HandleMessageAsync(api, slackEvent, prefs);
     }
 
-    private async Task HandleMessageAsync(MessageEvent slackEvent, AlertPreferences prefs)
+    private async Task HandleMessageAsync(ISlackApiClient api, MessageEvent slackEvent, AlertPreferences prefs)
     {
         var userId = slackEvent.User;
         var channelId = slackEvent.Channel;
@@ -159,14 +213,14 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
 
         try
         {
-            var (displayName, avatarUrl) = await ResolveUserAsync(userId);
+            var (displayName, avatarUrl) = await ResolveUserAsync(api, userId);
 
             var channelName = channelId;
             if (!isDm)
             {
                 try
                 {
-                    var convInfo = await _apiClient.Conversations.Info(channelId);
+                    var convInfo = await api.Conversations.Info(channelId);
                     channelName = FirstNonEmpty(convInfo?.Name) ?? channelId;
                 }
                 catch (Exception ex)
@@ -201,7 +255,7 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
         }
     }
 
-    private async Task RaiseAlertAsync(string? userId, string? channelId)
+    private async Task RaiseAlertAsync(ISlackApiClient api, string? userId, string? channelId)
     {
         if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(channelId))
             return;
@@ -234,7 +288,7 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
             bool isDm = SlackMessageParser.IsDirectMessage(channelId);
             try
             {
-                var convInfo = await _apiClient.Conversations.Info(channelId);
+                var convInfo = await api.Conversations.Info(channelId);
                 if (convInfo is not null)
                 {
                     if (!convInfo.IsIm && !convInfo.IsMpim && !convInfo.IsMember)
@@ -253,7 +307,7 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
                 _logger.LogWarning(ex, "Could not resolve channel info for {ChannelId}.", channelId);
             }
 
-            var (displayName, avatarUrl) = await ResolveUserAsync(userId);
+            var (displayName, avatarUrl) = await ResolveUserAsync(api, userId);
             var isPriority = _priorityOptions.CurrentValue.IsPriority(SourceId, new UserId(userId));
 
             // With a team id Slack can deep-link straight into the huddle;
@@ -288,14 +342,14 @@ public sealed class SlackHuddleMonitor : IAlertSource, IEventHandler<MessageEven
         }
     }
 
-    private async Task<(string DisplayName, string? AvatarUrl)> ResolveUserAsync(string userId)
+    private async Task<(string DisplayName, string? AvatarUrl)> ResolveUserAsync(ISlackApiClient api, string userId)
     {
         string displayName = userId;
         string? avatarUrl = null;
 
         try
         {
-            var userInfo = await _apiClient.Users.Info(userId);
+            var userInfo = await api.Users.Info(userId);
             displayName = FirstNonEmpty(
                 userInfo?.Profile?.DisplayName,
                 userInfo?.Profile?.RealName,
