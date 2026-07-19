@@ -11,6 +11,14 @@ public sealed class RelayOptions
     /// App-level token (<c>xapp-…</c>) for the org's Slack app. This is the credential that
     /// makes the relay necessary: Slack mints exactly one per app and distributes events
     /// arbitrarily across connections sharing it, so it must live in one place.
+    ///
+    /// Needs two scopes: <c>connections:write</c> to open Socket Mode, and
+    /// <c>authorizations:read</c> to expand a truncated authorizations list. Without the
+    /// second, events visible to many people reach only the one user Slack names inline —
+    /// a partial failure rather than an obvious one.
+    ///
+    /// Unlike user tokens, app-level tokens don't expire or rotate, so nothing here needs
+    /// renewing.
     /// </summary>
     public string AppToken { get; set; } = string.Empty;
 
@@ -19,13 +27,6 @@ public sealed class RelayOptions
     /// OpenID Connect id_tokens, so a token issued to another app can't be replayed here.
     /// </summary>
     public string ClientId { get; set; } = string.Empty;
-
-    /// <summary>
-    /// A bot or user token for calling <c>apps.event.authorizations.list</c>, which is how a
-    /// truncated authorizations list is expanded. Without it, events visible to many people
-    /// reach only the one user Slack named inline.
-    /// </summary>
-    public string ApiToken { get; set; } = string.Empty;
 
     /// <summary>
     /// The Slack app's client secret. The relay is the OAuth client — it performs the code
@@ -71,7 +72,8 @@ public sealed class RelayOptions
     {
         if (string.IsNullOrWhiteSpace(AppToken))
             throw new InvalidOperationException(
-                "Relay:AppToken is required (the xapp-… app-level token for your Slack app).");
+                "Relay:AppToken is required (the xapp-… app-level token for your Slack app, " +
+                "generated with the connections:write and authorizations:read scopes).");
 
         if (string.IsNullOrWhiteSpace(ClientId))
             throw new InvalidOperationException(

@@ -71,15 +71,27 @@ often `was_missed: true`.
 A parser matching `huddle_thread` anywhere in the payload would fire an alert **when the huddle
 is already over**. Only a *top-level* `huddle_thread` is a start.
 
-## 6. `apps.event.authorizations.list` rejects user tokens
+## 6. `apps.event.authorizations.list` needs an app-level token *and* a second scope
+
+Two distinct failures, found one after the other:
 
 ```
-SlackException: not_allowed_token_type
+SlackException: not_allowed_token_type          ← a user token won't do
+SlackException: missing_scope
+  needed:   authorizations:read
+  provided: connections:write                   ← nor will an app token without the scope
 ```
 
-It needs the **app-level** token, not the user token. The relay's resolver degraded gracefully
-to the inline list, which is the designed behaviour and meant events still routed — under-
-delivery rather than misdelivery — but the call was failing on every single event.
+It needs the **app-level** token carrying **`authorizations:read`**, alongside the
+`connections:write` that Socket Mode requires. Scopes can't be added to an existing app-level
+token and the manifest can't set them, so this means generating a new one.
+
+Both times the relay's resolver degraded to the inline list exactly as designed — events still
+routed, under-delivery rather than misdelivery — which is why the failure was survivable but
+also why it went unnoticed until the log was read.
+
+**Consequence worth noting:** because app-level tokens don't rotate or expire, the relay holds
+no credential that needs renewing. It stores no user tokens at all.
 
 ## 7. `authorizations` names the *recipient*, not the sender
 

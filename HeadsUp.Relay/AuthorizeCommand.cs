@@ -4,16 +4,18 @@ using Microsoft.Extensions.Logging;
 namespace HeadsUp.Relay;
 
 /// <summary>
-/// Runs the PKCE authorization flow from the console, printing the resulting user token.
+/// Installs the Slack app for one user, by running the OAuth flow from the console.
 ///
 /// A user-token-only Slack app has no one-click "Install to Workspace" button — installing it
-/// *is* running the OAuth flow — so this doubles as the install step and as the way to obtain
-/// the <see cref="RelayOptions.ApiToken"/> the relay needs for
-/// <c>apps.event.authorizations.list</c>.
+/// *is* running the OAuth flow — so this exists to authorize the first user without needing the
+/// relay's own sign-in endpoint reachable. In normal use people authorize through
+/// <c>/auth/start</c> instead.
 ///
-/// It deliberately reuses the same <see cref="SlackOAuthClient"/> and
-/// <see cref="LoopbackOAuthListener"/> the desktop app uses, so exercising this exercises the
-/// real implementation rather than a parallel one written for convenience.
+/// The relay itself keeps no user token: it reads events with the app-level token, so the token
+/// printed here is only useful for ad-hoc API calls.
+///
+/// It reuses the same <see cref="SlackOAuthClient"/> and <see cref="LoopbackOAuthListener"/> as
+/// the desktop app, so running it exercises the real implementation rather than a parallel one.
 /// </summary>
 public static class AuthorizeCommand
 {
@@ -62,13 +64,11 @@ public static class AuthorizeCommand
             options.ClientId, callback.Code, LoopbackOAuthListener.RedirectUri, pkce, ct);
 
         Console.WriteLine();
-        Console.WriteLine("Authorized. Put this in Relay:ApiToken in appsettings.Local.json:");
-        Console.WriteLine();
-        Console.WriteLine(tokens.AccessToken);
-        Console.WriteLine();
+        Console.WriteLine("Authorized — this user's events will now reach the relay.");
+        Console.WriteLine("The relay needs no user token, so there is nothing to paste anywhere.");
 
         if (tokens.RefreshToken is not null)
-            Console.WriteLine($"(rotating token; expires {tokens.ExpiresAt:u} — refresh token issued)");
+            Console.WriteLine($"(the token issued is rotating and expires {tokens.ExpiresAt:u})");
 
         return 0;
     }

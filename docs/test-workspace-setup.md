@@ -47,8 +47,15 @@ green test workspace as proof that path works at scale.
    sign-ins, since huddles need two live participants.
 3. **Create the app** from [the manifest](slack-app-manifest.json) — the prefilled link in
    `SlackAppSetupViewModel.CreateAppUrl` works here too.
-4. **Generate an app-level token**: Basic Information → App-Level Tokens → Generate, with the
-   **`connections:write`** scope. Socket Mode won't open without it.
+4. **Generate an app-level token**: Basic Information → App-Level Tokens → Generate, with
+   **both** of these scopes:
+   - **`connections:write`** — Socket Mode won't open without it
+   - **`authorizations:read`** — needed to expand a truncated authorizations list
+
+   Scopes can't be added to an existing token and the manifest can't set them, so getting this
+   wrong means generating a new one. Missing the second scope fails *partially*: the relay
+   connects and routes, but events visible to many people reach only the one user Slack names
+   inline.
 5. **Install to the workspace** and have *both* accounts authorize, so there are two
    installations to route between.
 

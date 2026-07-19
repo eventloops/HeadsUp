@@ -41,9 +41,10 @@ builder.Services.AddSingleton(options);
 if (options.LogRawFrames)
     builder.Logging.AddFilter("HeadsUp.Relay.Ingress.SocketModeIngress", LogLevel.Debug);
 
-// The Web API client, used for apps.event.authorizations.list when an authorizations list
-// comes back truncated. That method rejects user tokens with not_allowed_token_type — it is an
-// app-level concern, so it gets the app-level token regardless of what ApiToken holds.
+// The Web API client, used solely for apps.event.authorizations.list when an authorizations
+// list comes back truncated. That method rejects user tokens (not_allowed_token_type) and
+// needs the app-level token carrying authorizations:read. Since app-level tokens don't
+// rotate, the relay holds no credential that needs renewing.
 builder.Services.AddSlackNet(c => c.UseApiToken(options.AppToken));
 
 // The Socket Mode connection itself. Ingress works from the raw frame stream rather than
