@@ -96,4 +96,18 @@ public static class SlackEnvelopeParser
         element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
+
+    /// <summary>
+    /// Blanks credential-bearing fields so a frame can be logged safely.
+    ///
+    /// Slack puts the app's verification token in the <c>token</c> field of every single event
+    /// payload, so logging frames verbatim writes a credential to disk on every message. The
+    /// diagnostic is genuinely useful, so redact rather than drop it.
+    /// </summary>
+    public static string Redact(string json) =>
+        SecretFields.Replace(json, @"""$1"":""[redacted]""");
+
+    private static readonly System.Text.RegularExpressions.Regex SecretFields = new(
+        @"""(token|access_token|refresh_token|bot_token|app_token|verification_token|client_secret|signing_secret)""\s*:\s*""[^""]*""",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
 }

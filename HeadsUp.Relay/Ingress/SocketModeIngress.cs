@@ -65,7 +65,10 @@ public sealed class SocketModeIngress : BackgroundService
         // read the log to see exactly what Slack pushes over Socket Mode. Worth having because
         // the Events API and the client RTM stream do not carry the same message subtypes, and
         // huddle detection depends on which ones actually arrive here.
-        _logger.LogDebug("Socket frame on {SocketId}: {Frame}", raw.SocketId, raw.Message);
+        // Redacted: Slack includes the app's verification token in every event payload, so
+        // logging frames verbatim would write a credential to disk on every message.
+        _logger.LogDebug("Socket frame on {SocketId}: {Frame}",
+            raw.SocketId, SlackEnvelopeParser.Redact(raw.Message));
 
         ParsedEnvelope parsed;
         try

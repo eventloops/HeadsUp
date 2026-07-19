@@ -14,6 +14,16 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 
 var options = builder.Configuration.GetSection(RelayOptions.SectionName).Get<RelayOptions>() ?? new RelayOptions();
+
+// "authorize" runs the PKCE flow and exits, rather than starting the relay. A user-token-only
+// Slack app has no one-click install, so this is how the app gets installed and how the
+// ApiToken is obtained.
+if (args.Contains("authorize", StringComparer.OrdinalIgnoreCase))
+{
+    using var authLoggerFactory = LoggerFactory.Create(b => b.AddConsole());
+    return await AuthorizeCommand.RunAsync(options, authLoggerFactory, CancellationToken.None);
+}
+
 options.Validate();
 builder.Services.AddSingleton(options);
 
@@ -22,9 +32,9 @@ if (options.LogRawFrames)
     builder.Logging.AddFilter("HeadsUp.Relay.Ingress.SocketModeIngress", LogLevel.Debug);
 
 // The Web API client, used for apps.event.authorizations.list when an authorizations list
-// comes back truncated.
-builder.Services.AddSlackNet(c => c
-    .UseApiToken(string.IsNullOrWhiteSpace(options.ApiToken) ? options.AppToken : options.ApiToken));
+// comes back truncated. That method rejects user tokens with not_allowed_token_type — it is an
+// app-level concern, so it gets the app-level token regardless of what ApiToken holds.
+builder.Services.AddSlackNet(c => c.UseApiToken(options.AppToken));
 
 // The Socket Mode connection itself. Ingress works from the raw frame stream rather than
 // SlackNet's typed dispatch, because routing needs the envelope's authorizations and
@@ -52,3 +62,4 @@ var app = builder.Build();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 app.Run();
+return 0;
