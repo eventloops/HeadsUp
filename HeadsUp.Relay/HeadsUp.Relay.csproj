@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+    <RootNamespace>HeadsUp.Relay</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reuse the alert model and Slack message parsing rather than restating them here;
+         the relay and the desktop must agree on what an alert is. -->
+    <ProjectReference Include="..\HeadsUp.Domain\HeadsUp.Domain.csproj" />
+    <ProjectReference Include="..\HeadsUp.Infrastructure\HeadsUp.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SlackNet" Version="0.17.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="HeadsUp.Relay.Tests" />
+  </ItemGroup>
+
+</Project>
