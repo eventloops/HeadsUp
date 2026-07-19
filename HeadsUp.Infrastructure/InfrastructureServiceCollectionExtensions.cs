@@ -57,15 +57,19 @@ public static class InfrastructureServiceCollectionExtensions
         if (string.Equals(connector.Type, DetectionOptions.SlackApi, StringComparison.OrdinalIgnoreCase))
             return services.AddSlackApiHuddleDetection(configuration);
 
+        if (string.Equals(connector.Type, DetectionOptions.SlackRelay, StringComparison.OrdinalIgnoreCase))
+            return services.AddSlackRelayDetection(configuration);
+
         // Unknown connector type: leave it unregistered rather than fail startup.
         return services;
     }
 
-    /// <summary>Maps a connector route type to its source identity. Both Slack routes are "slack".</summary>
+    /// <summary>Maps a connector route type to its source identity. All Slack routes are "slack".</summary>
     private static (SourceId Id, string Name) ConnectorIdentity(string type)
     {
         if (string.Equals(type, DetectionOptions.SlackClientApi, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(type, DetectionOptions.SlackApi, StringComparison.OrdinalIgnoreCase))
+            string.Equals(type, DetectionOptions.SlackApi, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(type, DetectionOptions.SlackRelay, StringComparison.OrdinalIgnoreCase))
             return (SlackSource.SourceId, SlackSource.Name);
 
         // Future connectors: fall back to the route type as both id and display name.
@@ -98,6 +102,28 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<SlackHuddleMonitor>();
         services.AddSingleton<IAlertSource>(sp => sp.GetRequiredService<SlackHuddleMonitor>());
         services.AddHostedService(sp => sp.GetRequiredService<SlackHuddleMonitor>());
+        services.AddSingleton<IAlertLinkResolver, SlackAlertLinkResolver>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Detection via the Heads-Up relay: the company runs one Slack app, and the desktop
+    /// receives only the events Slack says this user may see. Classification stays local, so
+    /// the relay never learns anyone's priority people, keywords or muted channels.
+    /// </summary>
+    public static IServiceCollection AddSlackRelayDetection(
+        this IServiceCollection services, IConfiguration configuration)
+    {
+        services.Configure<RelayClientOptions>(configuration.GetSection(RelayClientOptions.SectionName));
+
+        // A platform head may register a provider that can actually sign the user in; TryAdd
+        // leaves that one in place.
+        services.TryAddSingleton<IRelayCredentialProvider, ConfigRelayCredentialProvider>();
+
+        services.AddSingleton<SlackRelaySource>();
+        services.AddSingleton<IAlertSource>(sp => sp.GetRequiredService<SlackRelaySource>());
+        services.AddHostedService(sp => sp.GetRequiredService<SlackRelaySource>());
         services.AddSingleton<IAlertLinkResolver, SlackAlertLinkResolver>();
 
         return services;

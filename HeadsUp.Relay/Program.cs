@@ -1,5 +1,6 @@
 using HeadsUp.Relay;
 using HeadsUp.Relay.Authentication;
+using HeadsUp.Relay.Endpoints;
 using HeadsUp.Relay.Ingress;
 using HeadsUp.Relay.Routing;
 using Microsoft.Extensions.Logging;
@@ -22,6 +23,15 @@ if (args.Contains("authorize", StringComparer.OrdinalIgnoreCase))
 {
     using var authLoggerFactory = LoggerFactory.Create(b => b.AddConsole());
     return await AuthorizeCommand.RunAsync(options, authLoggerFactory, CancellationToken.None);
+}
+
+// A generated key means sessions don't survive a restart, which is fine for development and
+// surprising in production — so say so rather than letting it be discovered.
+if (string.IsNullOrWhiteSpace(options.SessionSigningKey))
+{
+    options.SessionSigningKey = RelaySessionIssuer.GenerateSigningKey();
+    Console.WriteLine("Relay:SessionSigningKey is unset; generated one. " +
+                      "Desktops will have to sign in again after every restart.");
 }
 
 options.Validate();
@@ -57,19 +67,19 @@ builder.Services.AddSingleton<IEventAuthorizationResolver>(
 builder.Services.AddHostedService<AuthorizationCachePruner>();
 builder.Services.AddSingleton<EventRouter>();
 
-// Identity. Keys come from Slack's JWKS and are refreshed on a schedule, since Slack rotates them.
-builder.Services.AddHttpClient<ISlackSigningKeyProvider, SlackJwksKeyProvider>();
-builder.Services.AddSingleton(sp => new SlackIdTokenValidator(
-    sp.GetRequiredService<ISlackSigningKeyProvider>(),
-    options.ClientId,
-    sp.GetRequiredService<ILogger<SlackIdTokenValidator>>()));
+// Identity. The relay is the OAuth client, so users face a single consent screen — Slack
+// refuses to combine Sign in with Slack scopes with ordinary user scopes in one request.
+builder.Services.AddHttpClient<SlackOAuthExchange>();
+builder.Services.AddSingleton(sp => new RelaySessionIssuer(
+    options.SessionSigningKey, options.SessionLifetime,
+    sp.GetRequiredService<ILogger<RelaySessionIssuer>>()));
 
 builder.Services.AddHostedService<SocketModeIngress>();
 
 var app = builder.Build();
 
-// Liveness only — deliberately says nothing about who is connected.
-app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+app.UseWebSockets();
+app.MapRelayEndpoints(options);
 
 app.Run();
 return 0;

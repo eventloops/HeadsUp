@@ -28,6 +28,30 @@ public sealed class RelayOptions
     public string ApiToken { get; set; } = string.Empty;
 
     /// <summary>
+    /// The Slack app's client secret. The relay is the OAuth client — it performs the code
+    /// exchange so users face a single consent screen — which is why a server-side secret is
+    /// appropriate here, unlike the desktop app.
+    /// </summary>
+    public string ClientSecret { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The relay's own externally reachable base URL, e.g. <c>https://headsup.internal</c>.
+    /// Slack redirects here after consent, so it must match the app's registered redirect URL.
+    /// Only OAuth needs this reachable — event ingress dials out over Socket Mode.
+    /// </summary>
+    public string PublicUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Signs the relay's session tokens. Generated at startup when unset, which means sessions
+    /// don't survive a restart; set it in any real deployment. Rotating it invalidates every
+    /// session, which is the intended revocation mechanism.
+    /// </summary>
+    public string SessionSigningKey { get; set; } = string.Empty;
+
+    /// <summary>How long a desktop stays signed in before it must authorize again.</summary>
+    public TimeSpan SessionLifetime { get; set; } = TimeSpan.FromDays(30);
+
+    /// <summary>
     /// Logs every Socket Mode frame verbatim (credentials redacted). Diagnostic aid for
     /// confirming which message subtypes Slack actually delivers here.
     /// </summary>

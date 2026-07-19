@@ -6,6 +6,7 @@ public sealed class DetectionOptions
 
     public const string SlackApi = "SlackApi";
     public const string SlackClientApi = "SlackClientApi";
+    public const string SlackRelay = "SlackRelay";
 
     /// <summary>
     /// The connectors to run, side by side. Each entry's <see cref="ConnectorOptions.Type"/> is
