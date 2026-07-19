@@ -68,12 +68,12 @@ public sealed class SocketModeIngress : BackgroundService
         // Redacted: Slack includes the app's verification token in every event payload, so
         // logging frames verbatim would write a credential to disk on every message.
         _logger.LogDebug("Socket frame on {SocketId}: {Frame}",
-            raw.SocketId, SlackEnvelopeParser.Redact(raw.Message));
+            raw.SocketId, HeadsUp.Services.SlackEnvelopeParser.Redact(raw.Message));
 
         ParsedEnvelope parsed;
         try
         {
-            parsed = SlackEnvelopeParser.Parse(raw.Message);
+            parsed = RelayEnvelope.Parse(raw.Message);
         }
         catch (Exception ex)
         {

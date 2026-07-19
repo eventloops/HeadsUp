@@ -1,5 +1,6 @@
 using SlackNet;
 using SlackNet.Events;
+using SlackNet.SocketMode;
 
 namespace HeadsUp.Services;
 
@@ -24,6 +25,15 @@ public interface ISlackClientFactory
     /// event stream (e.g. the workspace directory).
     /// </summary>
     ISlackApiClient CreateApiClient(SlackAppCredentials credentials);
+
+    /// <summary>
+    /// Creates a Socket Mode client exposing <b>raw</b> frames.
+    ///
+    /// Needed because SlackNet's typed <c>MessageEvent</c> has no <c>room</c> property, and a
+    /// huddle's initiator lives only in <c>room.created_by</c> — the typed API cannot see who
+    /// started a huddle at all.
+    /// </summary>
+    ICoreSocketModeClient CreateSocketClient(SlackAppCredentials credentials);
 }
 
 /// <summary>A matched API + Socket Mode client pair for one set of credentials.</summary>
@@ -46,4 +56,7 @@ public sealed class SlackClientFactory : ISlackClientFactory
         new SlackServiceBuilder()
             .UseApiToken(credentials.UserToken)
             .GetApiClient();
+
+    public ICoreSocketModeClient CreateSocketClient(SlackAppCredentials credentials) =>
+        new CoreSocketModeClient(credentials.AppToken);
 }

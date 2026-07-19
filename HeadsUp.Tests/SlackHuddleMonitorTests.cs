@@ -5,7 +5,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using SlackNet;
-using SlackNet.Events;
 using SlackNet.WebApi;
 using Xunit;
 
@@ -16,7 +15,8 @@ public class SlackHuddleMonitorTests
     private const string SelfId = "USELF";
     private const string TeamId = "T123";
 
-    private readonly ISlackSocketModeClient _socket = Substitute.For<ISlackSocketModeClient>();
+    private readonly SlackNet.SocketMode.ICoreSocketModeClient _socket =
+        Substitute.For<SlackNet.SocketMode.ICoreSocketModeClient>();
     private readonly ISlackApiClient _api = Substitute.For<ISlackApiClient>();
     private readonly ISlackClientFactory _clientFactory = Substitute.For<ISlackClientFactory>();
     private readonly ISlackAppCredentialProvider _credentials = Substitute.For<ISlackAppCredentialProvider>();
@@ -38,8 +38,9 @@ public class SlackHuddleMonitorTests
     {
         _credentials.GetCredentialsAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromResult(_creds));
-        _clientFactory.Create(Arg.Any<SlackAppCredentials>(), Arg.Any<IEventHandler<MessageEvent>>())
-            .Returns(new SlackClients(_api, _socket));
+        _clientFactory.CreateApiClient(Arg.Any<SlackAppCredentials>()).Returns(_api);
+        _clientFactory.CreateSocketClient(Arg.Any<SlackAppCredentials>()).Returns(_socket);
+        _socket.RawSocketMessages.Returns(System.Reactive.Linq.Observable.Empty<SlackNet.SocketMode.RawSocketMessage>());
 
         return new SlackHuddleMonitor(
             _credentials,
@@ -76,11 +77,20 @@ public class SlackHuddleMonitorTests
         _api.Users.Info(id, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new User { Id = id, Name = "handle", Profile = new UserProfile { DisplayName = displayName, Image72 = image72 } });
 
-    private static MessageEvent Huddle(string user, string channel, string subtype = "huddle_thread") =>
-        new() { Subtype = subtype, User = user, Channel = channel };
+    /// <summary>
+    /// A huddle exactly as Slack sends it: authored by USLACKBOT, with the real initiator only
+    /// in room.created_by. Building it any other way would test a payload that never occurs.
+    /// </summary>
+    private static string Huddle(string user, string channel, string subtype = "huddle_thread") =>
+        "{\"type\":\"message\",\"user\":\"USLACKBOT\",\"channel\":\"" + channel +
+        "\",\"subtype\":\"" + subtype +
+        "\",\"room\":{\"created_by\":\"" + user +
+        "\",\"has_ended\":false,\"huddle_link\":\"https://app.slack.com/huddle/T123/" + channel + "\"}}";
 
-    private static MessageEvent Message(string user, string channel, string text) =>
-        new() { User = user, Channel = channel, Text = text };
+    private static string Message(string user, string channel, string text) =>
+        "{\"type\":\"message\",\"user\":\"" + user +
+        "\",\"channel\":\"" + channel +
+        "\",\"text\":\"" + text + "\"}";
 
     // ------------------------------------------------------------------
     // Startup
@@ -141,7 +151,7 @@ public class SlackHuddleMonitorTests
         Alert? raised = null;
         monitor.AlertRaised += (_, a) => raised = a;
 
-        await monitor.Handle(Huddle("U2", "C1")); // must not throw
+        await monitor.HandleEventAsync(Huddle("U2", "C1")); // must not throw
 
         Assert.Null(raised);
     }
@@ -151,12 +161,58 @@ public class SlackHuddleMonitorTests
     // ------------------------------------------------------------------
 
     [Fact]
+    public async Task A_huddle_is_attributed_to_its_initiator_not_to_slackbot()
+    {
+        // Regression: every huddle event Slack sends has user = USLACKBOT, with the real
+        // initiator only in room.created_by. Reading the obvious field broke three things at
+        // once — alerts credited to Slackbot, priority-user matching never firing, and
+        // own-huddle suppression never firing — and SlackNet's typed MessageEvent cannot see
+        // room at all, which is why this connector consumes raw frames.
+        var monitor = await StartedMonitor();
+        var waiter = new AlertWaiter(monitor);
+
+        await monitor.HandleEventAsync(Huddle("U2", "C1"));
+
+        var alert = await waiter.Alert;
+        Assert.Equal("U2", alert.InitiatorUserId.Value);
+        Assert.NotEqual("USLACKBOT", alert.InitiatorUserId.Value);
+    }
+
+    [Fact]
+    public async Task A_huddle_from_a_priority_person_is_flagged()
+    {
+        // Only passes when attribution is right: matching runs against the initiator, so
+        // reading USLACKBOT would silently never match anyone's priority list.
+        _priorityOptions = new PriorityOptions
+        {
+            Users = [new PriorityUser { Source = "slack", Id = "U2" }],
+        };
+        var monitor = await StartedMonitor();
+        var waiter = new AlertWaiter(monitor);
+
+        await monitor.HandleEventAsync(Huddle("U2", "C1"));
+
+        Assert.True((await waiter.Alert).IsPriorityUser);
+    }
+
+    [Fact]
+    public async Task A_huddle_uses_slacks_own_deep_link_when_it_supplies_one()
+    {
+        var monitor = await StartedMonitor();
+        var waiter = new AlertWaiter(monitor);
+
+        await monitor.HandleEventAsync(Huddle("U2", "C1"));
+
+        Assert.Equal("https://app.slack.com/huddle/T123/C1", (await waiter.Alert).Link);
+    }
+
+    [Fact]
     public async Task Huddle_in_a_member_channel_raises_a_full_alert()
     {
         var monitor = await StartedMonitor();
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(Huddle("U2", "C1"));
+        await monitor.HandleEventAsync(Huddle("U2", "C1"));
 
         var alert = await waiter.Alert;
         Assert.Equal(AlertKind.Huddle, alert.Kind);
@@ -175,7 +231,7 @@ public class SlackHuddleMonitorTests
         var monitor = await StartedMonitor();
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(Huddle("U2", "C1", subtype: "sh_room_created"));
+        await monitor.HandleEventAsync(Huddle("U2", "C1", subtype: "sh_room_created"));
 
         Assert.Equal(AlertKind.Huddle, (await waiter.Alert).Kind);
     }
@@ -187,7 +243,7 @@ public class SlackHuddleMonitorTests
         var monitor = await StartedMonitor();
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(Huddle("U2", "C1"));
+        await monitor.HandleEventAsync(Huddle("U2", "C1"));
 
         Assert.False(await waiter.RaisedWithin(TimeSpan.FromMilliseconds(200)));
     }
@@ -199,7 +255,7 @@ public class SlackHuddleMonitorTests
         var monitor = await StartedMonitor();
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(Huddle("U2", "C1"));
+        await monitor.HandleEventAsync(Huddle("U2", "C1"));
 
         Assert.False(await waiter.RaisedWithin(TimeSpan.FromMilliseconds(200)));
     }
@@ -210,7 +266,7 @@ public class SlackHuddleMonitorTests
         var monitor = await StartedMonitor();
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(Huddle(SelfId, "C1"));
+        await monitor.HandleEventAsync(Huddle(SelfId, "C1"));
 
         Assert.False(await waiter.RaisedWithin(TimeSpan.FromMilliseconds(200)));
     }
@@ -223,7 +279,7 @@ public class SlackHuddleMonitorTests
         var monitor = await StartedMonitor();
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(Huddle(SelfId, "C1"));
+        await monitor.HandleEventAsync(Huddle(SelfId, "C1"));
 
         Assert.Equal(SelfId, (await waiter.Alert).InitiatorUserId.Value);
     }
@@ -235,8 +291,8 @@ public class SlackHuddleMonitorTests
         var alerts = new List<Alert>();
         monitor.AlertRaised += (_, a) => alerts.Add(a);
 
-        await monitor.Handle(Huddle("U2", "C1"));
-        await monitor.Handle(Huddle("U2", "C1"));
+        await monitor.HandleEventAsync(Huddle("U2", "C1"));
+        await monitor.HandleEventAsync(Huddle("U2", "C1"));
 
         await Task.Delay(200); // let the resolve/raise pipeline drain
         Assert.Single(alerts);
@@ -249,7 +305,7 @@ public class SlackHuddleMonitorTests
         SetupConversation("C9", name: "private-elsewhere", isMember: false);
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(Huddle("U2", "C9"));
+        await monitor.HandleEventAsync(Huddle("U2", "C9"));
 
         Assert.False(await waiter.RaisedWithin(TimeSpan.FromMilliseconds(200)));
     }
@@ -261,7 +317,7 @@ public class SlackHuddleMonitorTests
         SetupConversation("D5", isIm: true, isMember: false);
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(Huddle("U2", "D5"));
+        await monitor.HandleEventAsync(Huddle("U2", "D5"));
 
         var alert = await waiter.Alert;
         Assert.True(alert.IsDirectMessage);
@@ -276,7 +332,7 @@ public class SlackHuddleMonitorTests
             .ThrowsAsync(new SlackException(new ErrorResponse { Error = "channel_not_found" }));
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(Huddle("U2", "CX"));
+        await monitor.HandleEventAsync(Huddle("U2", "CX"));
 
         Assert.Equal("CX", (await waiter.Alert).ChannelName);
     }
@@ -289,7 +345,7 @@ public class SlackHuddleMonitorTests
             .ThrowsAsync(new SlackException(new ErrorResponse { Error = "user_not_found" }));
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(Huddle("U404", "C1"));
+        await monitor.HandleEventAsync(Huddle("U404", "C1"));
 
         var alert = await waiter.Alert;
         Assert.Equal("U404", alert.InitiatorDisplayName);
@@ -303,7 +359,7 @@ public class SlackHuddleMonitorTests
         var monitor = await StartedMonitor();
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(Huddle("U2", "C1"));
+        await monitor.HandleEventAsync(Huddle("U2", "C1"));
 
         Assert.True((await waiter.Alert).IsPriorityUser);
     }
@@ -314,7 +370,7 @@ public class SlackHuddleMonitorTests
         var monitor = await StartedMonitor();
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(new MessageEvent { Subtype = "huddle_thread", Channel = "C1" }); // no user
+        await monitor.HandleEventAsync("""{"type":"message","subtype":"huddle_thread","channel":"C1"}"""); // no initiator
 
         Assert.False(await waiter.RaisedWithin(TimeSpan.FromMilliseconds(200)));
     }
@@ -329,7 +385,7 @@ public class SlackHuddleMonitorTests
         var monitor = await StartedMonitor();
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(Message("U2", "C1", $"<@{SelfId}> can you review?"));
+        await monitor.HandleEventAsync(Message("U2", "C1", $"<@{SelfId}> can you review?"));
 
         var alert = await waiter.Alert;
         Assert.Equal(AlertKind.Mention, alert.Kind);
@@ -343,7 +399,7 @@ public class SlackHuddleMonitorTests
         var monitor = await StartedMonitor();
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(Message("U2", "D5", "hi there"));
+        await monitor.HandleEventAsync(Message("U2", "D5", "hi there"));
 
         var alert = await waiter.Alert;
         Assert.Equal(AlertKind.DirectMessage, alert.Kind);
@@ -356,7 +412,7 @@ public class SlackHuddleMonitorTests
         var monitor = await StartedMonitor();
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(Message("U2", "C1", "the deploy finished"));
+        await monitor.HandleEventAsync(Message("U2", "C1", "the deploy finished"));
 
         Assert.Equal(AlertKind.Keyword, (await waiter.Alert).Kind);
     }
@@ -367,7 +423,7 @@ public class SlackHuddleMonitorTests
         var monitor = await StartedMonitor();
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(Message(SelfId, "D5", "note to self: deploy"));
+        await monitor.HandleEventAsync(Message(SelfId, "D5", "note to self: deploy"));
 
         Assert.False(await waiter.RaisedWithin(TimeSpan.FromMilliseconds(200)));
     }
@@ -378,13 +434,10 @@ public class SlackHuddleMonitorTests
         var monitor = await StartedMonitor();
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(new MessageEvent
-        {
-            Subtype = "message_changed",
-            User = "U2",
-            Channel = "C1",
-            Text = "deploy edited in"
-        });
+        await monitor.HandleEventAsync("""
+            {"type":"message","subtype":"message_changed","user":"U2","channel":"C1",
+             "message":{"text":"edited"}}
+            """);
 
         Assert.False(await waiter.RaisedWithin(TimeSpan.FromMilliseconds(200)));
     }
@@ -397,7 +450,7 @@ public class SlackHuddleMonitorTests
             .ThrowsAsync(new SlackException(new ErrorResponse { Error = "nope" }));
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(Message("U2", "CX", "deploy it"));
+        await monitor.HandleEventAsync(Message("U2", "CX", "deploy it"));
 
         Assert.Equal("CX", (await waiter.Alert).ChannelName);
     }
@@ -408,7 +461,7 @@ public class SlackHuddleMonitorTests
         var monitor = await StartedMonitor();
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(new MessageEvent { Text = "deploy" }); // no user, no channel
+        await monitor.HandleEventAsync("""{"type":"message","text":"deploy"}"""); // no user, no channel
 
         Assert.False(await waiter.RaisedWithin(TimeSpan.FromMilliseconds(200)));
     }
@@ -419,7 +472,7 @@ public class SlackHuddleMonitorTests
         var monitor = await StartedMonitor();
         var waiter = new AlertWaiter(monitor);
 
-        await monitor.Handle(Message("U2", "C1", "nothing to see")); // no mention/DM/keyword
+        await monitor.HandleEventAsync(Message("U2", "C1", "nothing to see")); // no mention/DM/keyword
 
         Assert.False(await waiter.RaisedWithin(TimeSpan.FromMilliseconds(200)));
     }
@@ -435,7 +488,7 @@ public class SlackHuddleMonitorTests
             throw new InvalidOperationException("subscriber boom");
         };
 
-        await monitor.Handle(Huddle("U2", "C1")); // must not throw
+        await monitor.HandleEventAsync(Huddle("U2", "C1")); // must not throw
 
         Assert.True(seen);
     }
@@ -451,7 +504,7 @@ public class SlackHuddleMonitorTests
             throw new InvalidOperationException("subscriber boom");
         };
 
-        await monitor.Handle(Message("U2", "D5", "hello")); // must not throw
+        await monitor.HandleEventAsync(Message("U2", "D5", "hello")); // must not throw
 
         Assert.True(seen);
     }

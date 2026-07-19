@@ -4,23 +4,29 @@ using Microsoft.Extensions.Options;
 using HeadsUp.Configuration;
 using HeadsUp.Models;
 using SlackNet;
-using SlackNet.Events;
+using SlackNet.SocketMode;
+using System.Text.Json;
 using System.Collections.Concurrent;
 
 namespace HeadsUp.Services;
 
 /// <summary>
-/// Connects to Slack via Socket Mode and raises <see cref="AlertRaised"/> whenever
-/// a huddle start is detected. Slack surfaces huddle starts as channel messages with
-/// subtype "huddle_thread" (and legacy calls as "sh_room_created"), so this class registers
-/// itself with SlackNet as an <see cref="IEventHandler{MessageEvent}"/>.
+/// Connects to Slack via Socket Mode and raises <see cref="AlertRaised"/> whenever a huddle
+/// start is detected. Slack surfaces huddle starts as channel messages with subtype
+/// "huddle_thread" (and legacy calls as "sh_room_created").
 ///
-/// This is the <b>sanctioned</b> path: a real Slack app, its own app-level token, and a user
-/// OAuth token. Credentials arrive from <see cref="ISlackAppCredentialProvider"/> rather than
-/// being read from config directly, because under OAuth they don't exist until the user signs
-/// in and they rotate afterwards — so the clients are built per connection attempt.
+/// This is the per-user Slack app path, used when there is no relay — each user creates their
+/// own app, because Socket Mode's app-level token cannot be shared across machines.
+/// Credentials arrive from <see cref="ISlackAppCredentialProvider"/> rather than config,
+/// because under OAuth they don't exist until the user signs in and they rotate afterwards.
+///
+/// It consumes <b>raw</b> frames rather than SlackNet's typed dispatch. That isn't a
+/// preference: a huddle's initiator lives only in <c>room.created_by</c>, and SlackNet's
+/// <c>MessageEvent</c> has no <c>room</c> property — so via the typed API every huddle is
+/// attributed to USLACKBOT, which also silently defeats priority-user matching and the
+/// suppression of your own huddles.
 /// </summary>
-public sealed class SlackHuddleMonitor : BackgroundService, IAlertSource, IEventHandler<MessageEvent>
+public sealed class SlackHuddleMonitor : BackgroundService, IAlertSource
 {
     /// <summary>Cooldown before a new huddle in the same channel fires another notification.</summary>
     private static readonly TimeSpan DedupeCooldown = TimeSpan.FromMinutes(5);
@@ -125,9 +131,14 @@ public sealed class SlackHuddleMonitor : BackgroundService, IAlertSource, IEvent
             return false;
         }
 
-        var clients = _clientFactory.Create(creds, this);
-        _apiClient = clients.Api;
-        var socket = clients.Socket;
+        _apiClient = _clientFactory.CreateApiClient(creds);
+        var socket = _clientFactory.CreateSocketClient(creds);
+
+        // Raw frames rather than SlackNet's typed dispatch: the typed MessageEvent has no
+        // room property, and a huddle's initiator lives only in room.created_by — so through
+        // the typed API every huddle would be attributed to Slackbot.
+        using var subscription = socket.RawSocketMessages.Subscribe(
+            raw => _ = HandleFrameAsync(socket, raw));
 
         await socket.Connect(cancellationToken: stoppingToken);
         _logger.LogInformation("Connected to Slack via Socket Mode.");
@@ -158,45 +169,74 @@ public sealed class SlackHuddleMonitor : BackgroundService, IAlertSource, IEvent
     }
 
     // ------------------------------------------------------------------
-    // SlackNet event handler
+    // Frame handling
     // ------------------------------------------------------------------
 
-    public async Task Handle(MessageEvent slackEvent)
+    /// <summary>Acknowledges a frame and handles its event. Slack redelivers unacknowledged envelopes.</summary>
+    private async Task HandleFrameAsync(ICoreSocketModeClient socket, RawSocketMessage raw)
+    {
+        try
+        {
+            var envelope = SlackEnvelopeParser.Parse(raw.Message);
+
+            if (envelope.EnvelopeId is { } envelopeId)
+                await socket.Send(raw.SocketId, new Acknowledgement { EnvelopeId = envelopeId });
+
+            if (envelope.EventJson is { } eventJson)
+                await HandleEventAsync(eventJson);
+        }
+        catch (Exception ex)
+        {
+            // One bad frame must not end the connection for everything after it.
+            _logger.LogWarning(ex, "Could not handle a Socket Mode frame.");
+        }
+    }
+
+    /// <summary>Classifies one Slack event. Internal so tests can feed events without a socket.</summary>
+    internal async Task HandleEventAsync(string eventJson)
     {
         // Events can only arrive over a live connection, which is also what binds the API
         // client — but capture it once so a concurrent reconnect can't null it mid-handle.
         if (_apiClient is not { } api)
             return;
 
+        using var document = JsonDocument.Parse(eventJson);
+        var root = document.RootElement;
+
+        if (root.Str("type") != "message")
+            return;
+
         var alerts = _alertOptions.CurrentValue;
         var prefs = alerts.ToPreferences();
 
-        // Huddle starts surface as a channel message with subtype "huddle_thread";
-        // legacy Slack Calls use "sh_room_created".
-        if (SlackMessageParser.IsHuddleSubtype(slackEvent.Subtype))
+        if (SlackHuddleParser.Parse(root) is { } huddle)
         {
-            if (!alerts.Huddles ||
-                AlertPolicy.IsChannelMuted(new ChannelId(slackEvent.Channel ?? string.Empty), SourceId, prefs.Muted))
+            // An ended huddle arrives wrapped in message_changed/message_deleted; alerting on
+            // those would fire once the huddle is already over.
+            if (!alerts.Huddles || huddle.HasEnded)
                 return;
 
-            _logger.LogDebug("Huddle-related message detected. Channel={Channel} Subtype={Subtype}",
-                slackEvent.Channel, slackEvent.Subtype);
+            if (AlertPolicy.IsChannelMuted(new ChannelId(huddle.ChannelId ?? string.Empty), SourceId, prefs.Muted))
+                return;
 
-            await RaiseAlertAsync(api, slackEvent.User, slackEvent.Channel);
+            _logger.LogDebug("Huddle detected. Channel={Channel} Initiator={User}",
+                huddle.ChannelId, huddle.InitiatorUserId);
+
+            await RaiseAlertAsync(api, huddle.InitiatorUserId, huddle.ChannelId, huddle.HuddleLink);
             return;
         }
 
-        // Only plain user messages (no subtype) are candidates for mention/DM/keyword
-        // alerts - skip edits, deletes, joins, bot posts, etc.
-        if (slackEvent.Subtype is null)
-            await HandleMessageAsync(api, slackEvent, prefs);
+        // Only plain user messages are candidates for mention/DM/keyword alerts — skip edits,
+        // deletes, joins and bot posts.
+        if (root.Str("subtype") is null)
+            await HandleMessageAsync(api, root, prefs);
     }
 
-    private async Task HandleMessageAsync(ISlackApiClient api, MessageEvent slackEvent, AlertPreferences prefs)
+    private async Task HandleMessageAsync(ISlackApiClient api, JsonElement message, AlertPreferences prefs)
     {
-        var userId = slackEvent.User;
-        var channelId = slackEvent.Channel;
-        var text = slackEvent.Text ?? string.Empty;
+        var userId = message.Str("user");
+        var channelId = message.Str("channel");
+        var text = message.Str("text") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(channelId))
             return;
 
@@ -255,7 +295,8 @@ public sealed class SlackHuddleMonitor : BackgroundService, IAlertSource, IEvent
         }
     }
 
-    private async Task RaiseAlertAsync(ISlackApiClient api, string? userId, string? channelId)
+    private async Task RaiseAlertAsync(
+        ISlackApiClient api, string? userId, string? channelId, string? huddleLink = null)
     {
         if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(channelId))
             return;
@@ -310,9 +351,9 @@ public sealed class SlackHuddleMonitor : BackgroundService, IAlertSource, IEvent
             var (displayName, avatarUrl) = await ResolveUserAsync(api, userId);
             var isPriority = _priorityOptions.CurrentValue.IsPriority(SourceId, new UserId(userId));
 
-            // With a team id Slack can deep-link straight into the huddle;
-            // otherwise fall back to opening the channel.
-            var huddleLink = string.IsNullOrEmpty(_teamId)
+            // Slack supplies its own huddle link in room.huddle_link; prefer it over one we
+            // assemble. Fall back to constructing one, then to just opening the channel.
+            huddleLink ??= string.IsNullOrEmpty(_teamId)
                 ? $"slack://channel?id={channelId}"
                 : $"https://app.slack.com/huddle/{_teamId}/{channelId}";
 

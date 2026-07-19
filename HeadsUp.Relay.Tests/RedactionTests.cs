@@ -1,4 +1,5 @@
 using HeadsUp.Relay.Ingress;
+using HeadsUp.Services;
 using Xunit;
 
 namespace HeadsUp.Relay.Tests;

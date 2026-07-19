@@ -1,4 +1,5 @@
 using HeadsUp.Relay.Ingress;
+using HeadsUp.Services;
 using Xunit;
 
 namespace HeadsUp.Relay.Tests;
@@ -30,7 +31,7 @@ public class SlackEnvelopeParserTests
     [Fact]
     public void A_direct_message_is_addressed_to_its_authorized_user()
     {
-        var parsed = SlackEnvelopeParser.Parse(DmEnvelope);
+        var parsed = RelayEnvelope.Parse(DmEnvelope);
 
         Assert.Equal("env-1", parsed.EnvelopeId);
         Assert.NotNull(parsed.Event);
@@ -48,7 +49,7 @@ public class SlackEnvelopeParserTests
               "event":{"type":"message"}}}
             """;
 
-        var parsed = SlackEnvelopeParser.Parse(json);
+        var parsed = RelayEnvelope.Parse(json);
 
         Assert.Equal(["U_ALICE"], parsed.Event!.Authorizations);
     }
@@ -61,7 +62,7 @@ public class SlackEnvelopeParserTests
             {"envelope_id":"e","type":"events_api","payload":{"event":{"type":"message"}}}
             """;
 
-        var parsed = SlackEnvelopeParser.Parse(json);
+        var parsed = RelayEnvelope.Parse(json);
 
         Assert.Null(parsed.Event);
         Assert.Equal("e", parsed.EnvelopeId); // still acknowledged
@@ -76,7 +77,7 @@ public class SlackEnvelopeParserTests
               "event_context":"ctx","authorizations":[],"event":{"type":"message"}}}
             """;
 
-        var parsed = SlackEnvelopeParser.Parse(json);
+        var parsed = RelayEnvelope.Parse(json);
 
         Assert.NotNull(parsed.Event);
         Assert.Equal("ctx", parsed.Event.EventContext);
@@ -89,7 +90,7 @@ public class SlackEnvelopeParserTests
     [Fact]
     public void Only_the_inner_event_is_forwarded()
     {
-        var parsed = SlackEnvelopeParser.Parse(DmEnvelope);
+        var parsed = RelayEnvelope.Parse(DmEnvelope);
 
         // Envelope metadata is routing machinery; a desktop has no business seeing other
         // people's authorizations or the app's tokens.
@@ -107,7 +108,7 @@ public class SlackEnvelopeParserTests
               "event":{"type":"message","subtype":"huddle_thread","user":"U_BOB","channel":"C1"}}}
             """;
 
-        var parsed = SlackEnvelopeParser.Parse(json);
+        var parsed = RelayEnvelope.Parse(json);
 
         Assert.Contains("huddle_thread", parsed.Event!.Payload);
     }
@@ -121,7 +122,7 @@ public class SlackEnvelopeParserTests
     [InlineData("""{"envelope_id":"e","type":"disconnect","reason":"refresh_requested"}""")]
     public void Lifecycle_frames_yield_no_event(string json)
     {
-        var parsed = SlackEnvelopeParser.Parse(json);
+        var parsed = RelayEnvelope.Parse(json);
 
         Assert.Null(parsed.Event);
     }
@@ -129,7 +130,7 @@ public class SlackEnvelopeParserTests
     [Fact]
     public void A_disconnect_frame_still_reports_its_envelope_id()
     {
-        var parsed = SlackEnvelopeParser.Parse("""{"envelope_id":"e9","type":"disconnect"}""");
+        var parsed = RelayEnvelope.Parse("""{"envelope_id":"e9","type":"disconnect"}""");
 
         Assert.Equal("e9", parsed.EnvelopeId);
     }
@@ -142,7 +143,7 @@ public class SlackEnvelopeParserTests
     public void Malformed_frames_are_survivable(string json)
     {
         // An unparseable frame must not take ingress down for everyone else.
-        var parsed = SlackEnvelopeParser.Parse(json);
+        var parsed = RelayEnvelope.Parse(json);
 
         Assert.Null(parsed.Event);
     }
@@ -157,7 +158,7 @@ public class SlackEnvelopeParserTests
               "event":{"type":"message"}}}
             """;
 
-        var parsed = SlackEnvelopeParser.Parse(json);
+        var parsed = RelayEnvelope.Parse(json);
 
         Assert.Equal(["U_ALICE"], parsed.Event!.Authorizations);
     }
