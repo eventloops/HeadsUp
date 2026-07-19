@@ -44,7 +44,17 @@ builder.Services.AddSingleton<ICoreSocketModeClient>(_ => new CoreSocketModeClie
 
 // Routing. The registry is a singleton because it holds the live desktop connections.
 builder.Services.AddSingleton<IUserConnectionRegistry, UserConnectionRegistry>();
-builder.Services.AddSingleton<IEventAuthorizationResolver, SlackEventAuthorizationResolver>();
+// Cached in front of the Slack lookup: without it the relay calls
+// apps.event.authorizations.list once per event, which runs at ~83% of that method's rate
+// limit at Slack's own event ceiling and adds a round trip to every alert.
+builder.Services.AddSingleton<SlackEventAuthorizationResolver>();
+builder.Services.AddSingleton<CachingEventAuthorizationResolver>(sp => new CachingEventAuthorizationResolver(
+    sp.GetRequiredService<SlackEventAuthorizationResolver>(),
+    sp.GetRequiredService<ILogger<CachingEventAuthorizationResolver>>(),
+    options.AuthorizationCacheTtl));
+builder.Services.AddSingleton<IEventAuthorizationResolver>(
+    sp => sp.GetRequiredService<CachingEventAuthorizationResolver>());
+builder.Services.AddHostedService<AuthorizationCachePruner>();
 builder.Services.AddSingleton<EventRouter>();
 
 // Identity. Keys come from Slack's JWKS and are refreshed on a schedule, since Slack rotates them.

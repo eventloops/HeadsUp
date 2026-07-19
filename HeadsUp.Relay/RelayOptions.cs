@@ -28,10 +28,19 @@ public sealed class RelayOptions
     public string ApiToken { get; set; } = string.Empty;
 
     /// <summary>
-    /// Logs every Socket Mode frame verbatim. Diagnostic aid for confirming which message
-    /// subtypes Slack actually delivers here — notably whether huddle starts do.
+    /// Logs every Socket Mode frame verbatim (credentials redacted). Diagnostic aid for
+    /// confirming which message subtypes Slack actually delivers here.
     /// </summary>
     public bool LogRawFrames { get; set; }
+
+    /// <summary>
+    /// How long a channel's authorization list is reused before being re-fetched.
+    ///
+    /// Trades API calls against staleness, and the staleness matters: until an entry expires,
+    /// someone who has left a channel still receives its events. Kept to a minute or two for
+    /// that reason, not tuned purely for throughput.
+    /// </summary>
+    public TimeSpan AuthorizationCacheTtl { get; set; } = TimeSpan.FromMinutes(1);
 
     /// <summary>Throws if the relay can't function, so misconfiguration fails at startup.</summary>
     public void Validate()
