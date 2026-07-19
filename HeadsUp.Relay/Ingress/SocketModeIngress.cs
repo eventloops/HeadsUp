@@ -61,6 +61,12 @@ public sealed class SocketModeIngress : BackgroundService
     /// </summary>
     internal async Task HandleAsync(RawSocketMessage raw, CancellationToken ct)
     {
+        // Every frame verbatim at Debug, so the relay doubles as a probe: start a huddle and
+        // read the log to see exactly what Slack pushes over Socket Mode. Worth having because
+        // the Events API and the client RTM stream do not carry the same message subtypes, and
+        // huddle detection depends on which ones actually arrive here.
+        _logger.LogDebug("Socket frame on {SocketId}: {Frame}", raw.SocketId, raw.Message);
+
         ParsedEnvelope parsed;
         try
         {

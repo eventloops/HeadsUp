@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <PackageReference Include="SlackNet" Version="0.17.10" />
+    <PackageReference Include="SlackNet.Extensions.DependencyInjection" Version="0.17.10" />
     <!-- Verifying Slack's OpenID Connect id_tokens against their published JWKS, so the relay
          can establish who a desktop is without ever holding a Slack access token. -->
     <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.1.2" />
