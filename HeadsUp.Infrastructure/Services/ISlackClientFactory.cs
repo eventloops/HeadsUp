@@ -1,5 +1,4 @@
 using SlackNet;
-using SlackNet.Events;
 using SlackNet.SocketMode;
 
 namespace HeadsUp.Services;
@@ -14,12 +13,6 @@ namespace HeadsUp.Services;
 /// </summary>
 public interface ISlackClientFactory
 {
-    /// <summary>
-    /// Creates an API client and a Socket Mode client bound to <paramref name="credentials"/>,
-    /// with <paramref name="eventHandler"/> registered for message events.
-    /// </summary>
-    SlackClients Create(SlackAppCredentials credentials, IEventHandler<MessageEvent> eventHandler);
-
     /// <summary>
     /// Creates a Web API client alone, for callers that make requests but don't consume the
     /// event stream (e.g. the workspace directory).
@@ -36,22 +29,9 @@ public interface ISlackClientFactory
     ICoreSocketModeClient CreateSocketClient(SlackAppCredentials credentials);
 }
 
-/// <summary>A matched API + Socket Mode client pair for one set of credentials.</summary>
-public sealed record SlackClients(ISlackApiClient Api, ISlackSocketModeClient Socket);
-
 /// <summary>The real factory, backed by <see cref="SlackServiceBuilder"/>.</summary>
 public sealed class SlackClientFactory : ISlackClientFactory
 {
-    public SlackClients Create(SlackAppCredentials credentials, IEventHandler<MessageEvent> eventHandler)
-    {
-        var builder = new SlackServiceBuilder()
-            .UseApiToken(credentials.UserToken)
-            .UseAppLevelToken(credentials.AppToken)
-            .RegisterEventHandler(_ => eventHandler);
-
-        return new SlackClients(builder.GetApiClient(), builder.GetSocketModeClient());
-    }
-
     public ISlackApiClient CreateApiClient(SlackAppCredentials credentials) =>
         new SlackServiceBuilder()
             .UseApiToken(credentials.UserToken)

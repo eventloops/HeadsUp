@@ -106,9 +106,16 @@ currently reasoned, not observed.
 ## 8. Rotating tokens are real
 
 `token_rotation_enabled` in the manifest produces `xoxe.…` access tokens with a ~12 hour
-expiry and a refresh token. The desktop handles renewal; **the relay currently does not** — it
-treats `ApiToken` as static config, so it will stop expanding authorizations after ~12 hours.
-Outstanding.
+expiry and a refresh token.
+
+The **relay** holds none of these: its only Slack call uses the app-level token, which never
+expires, so there is nothing there to renew.
+
+The **desktop** does, and renewal was broken in two ways worth remembering. Slack answers a
+refresh grant *flat* — `access_token` and `refresh_token` at the top level with
+`token_type: "user"` — while the initial code exchange nests them under `authed_user`;
+requiring the nested shape made every renewal fail. And a renewed token has to reach the
+already-bound API client, or a connection that stays up simply outlives its credentials.
 
 ## 9. Every event payload contains a credential
 

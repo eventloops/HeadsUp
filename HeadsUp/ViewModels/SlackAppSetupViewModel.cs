@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -16,32 +17,30 @@ namespace HeadsUp.ViewModels;
 public sealed partial class SlackAppSetupViewModel : ObservableObject
 {
     /// <summary>
-    /// The manifest, inlined so the deep link works with no network fetch and no file for the
-    /// user to handle. Kept in step with <c>docs/slack-app-manifest.json</c>.
+    /// The manifest, read from the embedded <c>docs/slack-app-manifest.json</c> — the same file
+    /// the setup docs tell people to paste.
+    ///
+    /// It used to be a second copy written out in code "kept in step" by a comment, which meant
+    /// adding a scope or an event subscription in one place silently gave doc-followers and
+    /// button-clickers different apps. One source removes that class of bug; the test suite
+    /// asserts the embedded copy still contains what the code depends on.
     /// </summary>
-    private static readonly string ManifestJson = JsonSerializer.Serialize(new
+    internal static readonly string ManifestJson = LoadManifest();
+
+    private static string LoadManifest()
     {
-        display_information = new
-        {
-            name = "Heads-Up",
-            description = "Unmissable desktop alerts for huddles, mentions and DMs.",
-            background_color = "#1a1614",
-        },
-        oauth_config = new
-        {
-            redirect_urls = new[] { LoopbackOAuthListener.RedirectUri },
-            scopes = new { user = SlackOAuthClient.UserScopes },
-        },
-        settings = new
-        {
-            event_subscriptions = new
-            {
-                user_events = new[] { "message.channels", "message.groups", "message.im", "message.mpim" },
-            },
-            socket_mode_enabled = true,
-            token_rotation_enabled = true,
-        },
-    });
+        var assembly = typeof(SlackAppSetupViewModel).Assembly;
+        var name = assembly.GetManifestResourceNames()
+            .Single(n => n.EndsWith("slack-app-manifest.json", StringComparison.Ordinal));
+
+        using var stream = assembly.GetManifestResourceStream(name)!;
+        using var reader = new StreamReader(stream);
+
+        // Reserialize to strip the file's formatting: the manifest travels in a query string,
+        // so every newline and indent would otherwise be percent-encoded into the URL.
+        using var document = JsonDocument.Parse(reader.ReadToEnd());
+        return JsonSerializer.Serialize(document.RootElement);
+    }
 
     private readonly IBrowserLauncher _browser;
 

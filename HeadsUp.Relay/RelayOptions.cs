@@ -23,8 +23,8 @@ public sealed class RelayOptions
     public string AppToken { get; set; } = string.Empty;
 
     /// <summary>
-    /// The Slack app's client id. Used as the expected audience when verifying desktops'
-    /// OpenID Connect id_tokens, so a token issued to another app can't be replayed here.
+    /// The Slack app's client id. Identifies the app when starting the OAuth flow and when
+    /// exchanging the authorization code. Not a secret.
     /// </summary>
     public string ClientId { get; set; } = string.Empty;
 

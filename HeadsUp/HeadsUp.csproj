@@ -31,6 +31,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The single source of truth for the Slack app manifest. Embedded rather than duplicated
+         in code so the in-app "Create app" button and the setup docs cannot drift apart. -->
+    <EmbeddedResource Include="..\docs\slack-app-manifest.json" Link="slack-app-manifest.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
     <PackageReference Include="Serilog" Version="4.1.0" />

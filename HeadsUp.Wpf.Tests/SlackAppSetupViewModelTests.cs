@@ -47,6 +47,43 @@ public class SlackAppSetupViewModelTests
     }
 
     [Fact]
+    public void The_manifest_requests_exactly_the_scopes_the_oauth_client_asks_for()
+    {
+        // The manifest is now the embedded docs file rather than a copy in code, so this is
+        // what stops the two drifting: asking for a scope Slack was never told about fails at
+        // the consent screen, and granting one nothing uses is silent over-permission.
+        var manifest = ParseManifest();
+        var scopes = manifest.RootElement
+            .GetProperty("oauth_config").GetProperty("scopes").GetProperty("user")
+            .EnumerateArray().Select(e => e.GetString()!).ToList();
+
+        Assert.Equal(SlackOAuthClient.UserScopes.OrderBy(s => s), scopes.OrderBy(s => s));
+    }
+
+    [Fact]
+    public void The_manifest_registers_the_relays_callback_too()
+    {
+        // Missing this meant every relay-mediated sign-in died at Slack with bad_redirect_uri,
+        // because /auth/start sends a redirect_uri the app had never heard of.
+        var redirects = ParseManifest().RootElement
+            .GetProperty("oauth_config").GetProperty("redirect_urls")
+            .EnumerateArray().Select(e => e.GetString()).ToList();
+
+        Assert.Contains(redirects, r => r!.EndsWith("/auth/callback", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_manifest_enables_the_token_rotation_the_desktop_handles()
+    {
+        var settings = ParseManifest().RootElement.GetProperty("settings");
+
+        Assert.True(settings.GetProperty("token_rotation_enabled").GetBoolean());
+    }
+
+    private static JsonDocument ParseManifest() =>
+        JsonDocument.Parse(SlackAppSetupViewModel.ManifestJson);
+
+    [Fact]
     public void The_manifest_subscribes_to_user_events_not_bot_events()
     {
         var url = SlackAppSetupViewModel.CreateAppUrl;

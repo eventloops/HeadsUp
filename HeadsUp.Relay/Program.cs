@@ -16,9 +16,10 @@ builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, relo
 
 var options = builder.Configuration.GetSection(RelayOptions.SectionName).Get<RelayOptions>() ?? new RelayOptions();
 
-// "authorize" runs the PKCE flow and exits, rather than starting the relay. A user-token-only
-// Slack app has no one-click install, so this is how the app gets installed and how the
-// ApiToken is obtained.
+// "authorize" installs the app for one user and exits, rather than starting the relay. A
+// user-token-only Slack app has no one-click install, so this bootstraps the first user
+// without needing /auth/start reachable; everyone else signs in through that endpoint. The
+// relay keeps no user token of its own.
 if (args.Contains("authorize", StringComparer.OrdinalIgnoreCase))
 {
     using var authLoggerFactory = LoggerFactory.Create(b => b.AddConsole());

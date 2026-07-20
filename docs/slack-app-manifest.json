@@ -6,7 +6,8 @@
   },
   "oauth_config": {
     "redirect_urls": [
-      "http://localhost:32741/callback"
+      "http://localhost:32741/callback",
+      "http://localhost:5285/auth/callback"
     ],
     "scopes": {
       "user": [

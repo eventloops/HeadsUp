@@ -68,11 +68,20 @@ Put the values in `HeadsUp.Relay/appsettings.Local.json` (git-ignored):
   "Relay": {
     "AppToken": "xapp-...",
     "ClientId": "1234567890.1234567890",
-    "ApiToken": "xoxb-... or xoxp-...",
+    "ClientSecret": "...",
+    "PublicUrl": "http://localhost:5285",
     "LogRawFrames": true
   }
 }
 ```
+
+`ClientSecret` and `PublicUrl` are needed because the relay performs the OAuth exchange —
+that's what lets users sign in with a single consent screen. The relay holds **no user token**;
+its only Slack API call uses the app-level token.
+
+`PublicUrl` must match a redirect URL registered on the app — add
+`http://localhost:5285/auth/callback` under OAuth & Permissions → Redirect URLs alongside the
+desktop's loopback one.
 
 ```
 dotnet run --project HeadsUp.Relay

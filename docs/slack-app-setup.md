@@ -46,6 +46,9 @@ and Scopes**:
 
 - Name it anything (`heads-up-socket` works)
 - Add the **`connections:write`** scope — Socket Mode won't open without it
+- For a **relay** deployment also add **`authorizations:read`**, which the relay needs to
+  expand a truncated authorizations list. (This per-user path doesn't: every event it receives
+  is already its own user's.)
 - Generate, then copy the `xapp-…` value
 
 ### 3. Enter the two values
