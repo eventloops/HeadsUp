@@ -61,15 +61,21 @@ public class SlackAppSetupViewModelTests
     }
 
     [Fact]
-    public void The_manifest_registers_the_relays_callback_too()
+    public void This_manifest_is_the_per_user_app_and_carries_no_bot_scopes()
     {
-        // Missing this meant every relay-mediated sign-in died at Slack with bad_redirect_uri,
-        // because /auth/start sends a redirect_uri the app had never heard of.
-        var redirects = ParseManifest().RootElement
-            .GetProperty("oauth_config").GetProperty("redirect_urls")
-            .EnumerateArray().Select(e => e.GetString()).ToList();
+        // The per-user app and the relay app are different apps with incompatible settings:
+        // PKCE (which a desktop needs, since it can't hold a secret) makes localhost a desktop
+        // redirect, and desktop redirects may not request bot scopes. Combining them produced
+        // an app that could never be granted the scopes it asked for.
+        var oauth = ParseManifest().RootElement.GetProperty("oauth_config");
 
-        Assert.Contains(redirects, r => r!.EndsWith("/auth/callback", StringComparison.Ordinal));
+        Assert.True(oauth.GetProperty("pkce_enabled").GetBoolean());
+        Assert.False(oauth.GetProperty("scopes").TryGetProperty("bot", out _));
+
+        var redirects = oauth.GetProperty("redirect_urls")
+            .EnumerateArray().Select(e => e.GetString()!).ToList();
+
+        Assert.All(redirects, r => Assert.Contains($":{LoopbackOAuthListener.Port}", r));
     }
 
     [Fact]
