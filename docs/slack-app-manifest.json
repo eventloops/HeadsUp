@@ -4,7 +4,14 @@
     "description": "Unmissable desktop alerts for huddles, mentions and DMs.",
     "background_color": "#1a1614"
   },
+  "features": {
+    "bot_user": {
+      "display_name": "Heads-Up",
+      "always_online": false
+    }
+  },
   "oauth_config": {
+    "pkce_enabled": true,
     "redirect_urls": [
       "http://localhost:32741/callback",
       "http://localhost:5285/auth/callback"
