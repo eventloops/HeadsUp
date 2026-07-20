@@ -86,15 +86,36 @@ public static class SlackEnvelopeParser
     }
 
     /// <summary>
-    /// Blanks credential-bearing fields so a frame can be logged safely. Slack puts the app's
-    /// verification token in the <c>token</c> field of every event payload, so logging frames
-    /// verbatim writes a credential to disk on every message.
+    /// Blanks credentials <b>and message content</b> so a frame can be logged safely.
+    ///
+    /// Two different problems, both of which end with something on disk that shouldn't be:
+    ///
+    /// <list type="bullet">
+    /// <item>Slack puts the app's verification token in the <c>token</c> field of every event
+    /// payload, so logging frames verbatim writes a credential on every message.</item>
+    /// <item>The payload also carries what people actually said. The relay is designed to hold
+    /// no message history — it forwards and forgets — and a debug log that quietly accumulates
+    /// message text on the server contradicts that, whatever the database does.</item>
+    /// </list>
+    ///
+    /// Everything diagnostically useful survives: types, subtypes, ids, authorizations,
+    /// timestamps. Only the words are removed, and the length is kept so "was there text?"
+    /// remains answerable.
     /// </summary>
     public static string Redact(string json) =>
-        SecretFields.Replace(json, @"""$1"":""[redacted]""");
+        MessageText.Replace(
+            SecretFields.Replace(json, @"""$1"":""[redacted]"""),
+            m => $"\"{m.Groups[1].Value}\":\"[{m.Groups[2].Value.Length} chars redacted]\"");
 
     private static readonly System.Text.RegularExpressions.Regex SecretFields = new(
         @"""(token|access_token|refresh_token|bot_token|app_token|verification_token|client_secret|signing_secret)""\s*:\s*""[^""]*""",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Human-authored content: the message body, and the rich-text blocks that repeat it.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex MessageText = new(
+        @"""(text|preview|fallback)""\s*:\s*""((?:[^""\\]|\\.)*)""",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private static string? GetString(JsonElement element, string property) =>

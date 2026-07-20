@@ -116,6 +116,25 @@ public class SocketModeIngressTests
         Assert.DoesNotContain("authorizations", alice.Received.Single());
     }
 
+    [Fact]
+    public async Task Redaction_applies_to_logs_only_and_not_to_what_is_delivered()
+    {
+        // The desktop needs the actual words: keyword rules and mention detection run there.
+        // Redacting the routed payload would silently break both while looking like a
+        // privacy improvement.
+        var alice = Connect("U_ALICE");
+        _resolver.UserIds = ["U_ALICE"];
+        var frame = """
+            {"envelope_id":"e","type":"events_api","payload":{
+              "event_context":"ctx","authorizations":[{"user_id":"U_ALICE"}],
+              "event":{"type":"message","user":"U_BOB","channel":"C1","text":"deploy at four"}}}
+            """;
+
+        await Ingress().HandleAsync(Frame(frame), CancellationToken.None);
+
+        Assert.Contains("deploy at four", alice.Received.Single());
+    }
+
     private RecordingConnection Connect(string userId)
     {
         var connection = new RecordingConnection(userId);

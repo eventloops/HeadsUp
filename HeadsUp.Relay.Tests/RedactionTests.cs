@@ -35,6 +35,65 @@ public class RedactionTests
         Assert.DoesNotContain(secret, redacted);
     }
 
+    // ------------------------------------------------------------------
+    // Message content
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void What_people_said_is_not_written_to_disk()
+    {
+        // The relay is designed to hold no message history. A debug log quietly accumulating
+        // message text on the server contradicts that, whatever the database does.
+        var frame = """{"event":{"type":"message","user":"U1","text":"the merger closes friday"}}""";
+
+        var redacted = SlackEnvelopeParser.Redact(frame);
+
+        Assert.DoesNotContain("merger", redacted);
+        Assert.DoesNotContain("friday", redacted);
+    }
+
+    [Fact]
+    public void The_length_survives_so_was_there_text_stays_answerable()
+    {
+        var redacted = SlackEnvelopeParser.Redact("""{"text":"hello"}""");
+
+        Assert.Contains("5 chars redacted", redacted);
+    }
+
+    [Fact]
+    public void Rich_text_copies_of_the_message_are_redacted_too()
+    {
+        // Slack repeats the body inside blocks; redacting only the top-level text would leave
+        // a verbatim copy sitting right beside it.
+        var frame = """
+            {"event":{"text":"secret plan","blocks":[{"type":"rich_text","elements":[
+              {"type":"rich_text_section","elements":[{"type":"text","text":"secret plan"}]}]}]}}
+            """;
+
+        Assert.DoesNotContain("secret plan", SlackEnvelopeParser.Redact(frame));
+    }
+
+    [Fact]
+    public void An_empty_message_body_is_handled()
+    {
+        // Huddle events carry "text":"" — the redaction must not mangle them.
+        var redacted = SlackEnvelopeParser.Redact("""{"subtype":"huddle_thread","text":""}""");
+
+        Assert.Contains("huddle_thread", redacted);
+        Assert.Contains("0 chars redacted", redacted);
+    }
+
+    [Fact]
+    public void Escaped_quotes_inside_a_message_do_not_break_redaction()
+    {
+        var frame = """{"text":"he said \"ship it\" on friday"}""";
+
+        var redacted = SlackEnvelopeParser.Redact(frame);
+
+        Assert.DoesNotContain("ship it", redacted);
+        Assert.DoesNotContain("friday", redacted);
+    }
+
     [Fact]
     public void Everything_diagnostically_useful_survives()
     {

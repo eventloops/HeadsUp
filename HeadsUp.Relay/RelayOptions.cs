@@ -61,8 +61,14 @@ public sealed class RelayOptions
     public TimeSpan SessionLifetime { get; set; } = TimeSpan.FromDays(30);
 
     /// <summary>
-    /// Logs every Socket Mode frame verbatim (credentials redacted). Diagnostic aid for
-    /// confirming which message subtypes Slack actually delivers here.
+    /// Logs every Socket Mode frame, with credentials and message text redacted. A diagnostic
+    /// for confirming which subtypes Slack actually delivers — off by default, because a log
+    /// that accumulates one line per message across a whole workspace is worth opting into
+    /// rather than inheriting.
+    ///
+    /// Redaction is not optional even here: the relay is meant to hold no message history, and
+    /// a debug log quietly collecting what people said would contradict that regardless of
+    /// there being no database.
     /// </summary>
     public bool LogRawFrames { get; set; }
 
