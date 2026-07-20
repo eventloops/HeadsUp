@@ -1,3 +1,9 @@
+> **Personal project.** Heads-Up was built by Cameron Lambert in personal time, on a
+> personal Claude subscription, with no direction or resourcing from any employer. It is
+> shared on internal infrastructure only to let colleagues evaluate it as a possible internal
+> tool. The canonical repository is [github.com/Cameron097/HeadsUp](https://github.com/Cameron097/HeadsUp);
+> any internal copy is a snapshot for that evaluation, not the source of record.
+
 # Heads-Up
 
 Big, hard-to-miss desktop alerts for the Slack activity you can't afford to miss:
