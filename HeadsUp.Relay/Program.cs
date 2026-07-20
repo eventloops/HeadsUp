@@ -71,6 +71,7 @@ builder.Services.AddSingleton<EventRouter>();
 // Identity. The relay is the OAuth client, so users face a single consent screen — Slack
 // refuses to combine Sign in with Slack scopes with ordinary user scopes in one request.
 builder.Services.AddHttpClient<SlackOAuthExchange>();
+builder.Services.AddSingleton(new OAuthStateProtector(options.SessionSigningKey));
 builder.Services.AddSingleton(sp => new RelaySessionIssuer(
     options.SessionSigningKey, options.SessionLifetime,
     sp.GetRequiredService<ILogger<RelaySessionIssuer>>()));

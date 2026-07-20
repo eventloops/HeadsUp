@@ -1,6 +1,4 @@
 using System.Net.WebSockets;
-using System.Security.Cryptography;
-using System.Text;
 using HeadsUp.Relay.Authentication;
 using HeadsUp.Relay.Routing;
 using HeadsUp.Services;
@@ -19,7 +17,7 @@ public static class RelayEndpoints
     {
         app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
-        app.MapGet("/auth/start", (HttpContext http, RelayOptions opts) =>
+        app.MapGet("/auth/start", (HttpContext http, RelayOptions opts, OAuthStateProtector states) =>
         {
             // The desktop tells us where to send the user back to on this machine. Only
             // loopback is accepted: an open redirect here would let an attacker harvest
@@ -30,7 +28,7 @@ public static class RelayEndpoints
 
             // State carries the desktop's return address and is signed on the way out, so the
             // callback can trust it came from us rather than being fabricated.
-            var state = StateProtector.Protect(returnTo, opts.SessionSigningKey);
+            var state = states.Protect(returnTo);
 
             return Results.Redirect(SlackOAuthExchange.BuildAuthorizeUrl(
                 opts.ClientId, opts.PublicUrl.TrimEnd('/') + CallbackPath, state, SlackOAuthClient.UserScopes));
@@ -41,6 +39,7 @@ public static class RelayEndpoints
             RelayOptions opts,
             SlackOAuthExchange exchange,
             RelaySessionIssuer sessions,
+            OAuthStateProtector states,
             ILoggerFactory loggers,
             CancellationToken ct) =>
         {
@@ -53,7 +52,7 @@ public static class RelayEndpoints
             var code = http.Request.Query["code"].ToString();
             var state = http.Request.Query["state"].ToString();
 
-            if (StateProtector.Unprotect(state, opts.SessionSigningKey) is not { } returnTo)
+            if (states.Unprotect(state) is not { } returnTo)
             {
                 logger.LogWarning("Discarding an OAuth callback with an untrusted state parameter.");
                 return Results.BadRequest("Invalid state.");
@@ -119,61 +118,16 @@ public static class RelayEndpoints
         });
     }
 
-    private static bool IsLoopback(string url) =>
+    /// <summary>
+    /// Only loopback return addresses are accepted: an open redirect here would let an attacker
+    /// point the callback at themselves and harvest sessions.
+    ///
+    /// Uses <see cref="Uri.IsLoopback"/> rather than matching host strings, which silently
+    /// missed IPv6 — <c>Uri.Host</c> canonicalises <c>[::1]</c> to its expanded bracketed form,
+    /// so a literal comparison never matched and IPv6 callbacks were rejected outright.
+    /// </summary>
+    internal static bool IsLoopback(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri)
         && uri.Scheme == Uri.UriSchemeHttp
-        && (uri.Host is "localhost" or "127.0.0.1" or "[::1]");
-
-    /// <summary>
-    /// Signs the OAuth state so the callback can trust the return address came from us. Without
-    /// this, the return_to check at /auth/start could be bypassed by crafting a callback URL
-    /// directly.
-    /// </summary>
-    private static class StateProtector
-    {
-        public static string Protect(string returnTo, string key)
-        {
-            var nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(8));
-            var payload = $"{nonce}|{returnTo}";
-            return Base64Url($"{payload}|{Sign(payload, key)}");
-        }
-
-        public static string? Unprotect(string state, string key)
-        {
-            try
-            {
-                var decoded = Encoding.UTF8.GetString(FromBase64Url(state));
-                var parts = decoded.Split('|');
-                if (parts.Length != 3)
-                    return null;
-
-                var payload = $"{parts[0]}|{parts[1]}";
-                var expected = Sign(payload, key);
-
-                // Fixed-time comparison: a signature check that leaks timing is a forgeable one.
-                return CryptographicOperations.FixedTimeEquals(
-                    Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(parts[2]))
-                    ? parts[1]
-                    : null;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        private static string Sign(string payload, string key) =>
-            Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(payload)));
-
-        private static string Base64Url(string value) =>
-            Convert.ToBase64String(Encoding.UTF8.GetBytes(value))
-                .TrimEnd('=').Replace('+', '-').Replace('/', '_');
-
-        private static byte[] FromBase64Url(string value)
-        {
-            var padded = value.Replace('-', '+').Replace('_', '/');
-            padded += new string('=', (4 - padded.Length % 4) % 4);
-            return Convert.FromBase64String(padded);
-        }
-    }
+        && uri.IsLoopback;
 }

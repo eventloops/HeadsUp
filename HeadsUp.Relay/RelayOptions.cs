@@ -78,5 +78,22 @@ public sealed class RelayOptions
         if (string.IsNullOrWhiteSpace(ClientId))
             throw new InvalidOperationException(
                 "Relay:ClientId is required; without it no desktop's identity can be verified.");
+
+        // Checked at boot rather than at first sign-in. Both are only reached once a user tries
+        // to connect, so leaving them out produced a relay that looked healthy for days and
+        // then failed with an opaque Slack error for the first person who tried to use it.
+        if (string.IsNullOrWhiteSpace(ClientSecret))
+            throw new InvalidOperationException(
+                "Relay:ClientSecret is required — the relay performs the OAuth code exchange, " +
+                "which is what lets users sign in with a single consent screen.");
+
+        if (string.IsNullOrWhiteSpace(PublicUrl))
+            throw new InvalidOperationException(
+                "Relay:PublicUrl is required (e.g. https://headsup.internal). Slack redirects " +
+                "here after consent, so it must match the app's registered redirect URL.");
+
+        if (!Uri.TryCreate(PublicUrl, UriKind.Absolute, out _))
+            throw new InvalidOperationException(
+                $"Relay:PublicUrl must be an absolute URL; got '{PublicUrl}'.");
     }
 }

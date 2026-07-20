@@ -26,6 +26,11 @@ public sealed class LoopbackOAuthListener
         "<h2>Heads-Up is connected.</h2><p>You can close this tab and return to the app.</p>" +
         "</body></html>";
 
+    private const string WaitingHtml =
+        "<html><body style='font-family:system-ui;text-align:center;padding-top:4rem'>" +
+        "<h2>Heads-Up is waiting for Slack.</h2><p>Nothing to see here yet.</p>" +
+        "</body></html>";
+
     private const string FailureHtml =
         "<html><body style='font-family:system-ui;text-align:center;padding-top:4rem'>" +
         "<h2>Sign-in did not complete.</h2><p>Return to Heads-Up and try again.</p>" +
@@ -63,31 +68,49 @@ public sealed class LoopbackOAuthListener
             // unblocks it, so tie that to the token.
             using var registration = ct.Register(() => listener.Stop());
 
-            var context = await listener.GetContextAsync();
-            var query = context.Request.QueryString;
-            var code = query["code"];
-            var state = query["state"];
-            var error = query["error"];
-
-            var ok = error is null
-                     && !string.IsNullOrEmpty(code)
-                     && string.Equals(state, expectedState, StringComparison.Ordinal);
-
-            await RespondAsync(context, ok ? SuccessHtml : FailureHtml);
-
-            if (error is not null)
+            // Loop rather than accepting a single request: anything else on this port during
+            // the sign-in window — a browser favicon fetch, another local process, a port
+            // scanner — would otherwise consume the one accept and leave the real redirect
+            // hitting a closed listener, failing the sign-in for reasons invisible to the user.
+            while (!ct.IsCancellationRequested)
             {
-                _logger.LogWarning("Slack returned an OAuth error: {Error}.", error);
-                return null;
+                var context = await listener.GetContextAsync();
+                var query = context.Request.QueryString;
+                var code = query["code"];
+                var state = query["state"];
+                var error = query["error"];
+
+                // Slack said no. That is an answer, so stop waiting.
+                if (error is not null)
+                {
+                    await RespondAsync(context, FailureHtml);
+                    _logger.LogWarning("Slack returned an OAuth error: {Error}.", error);
+                    return null;
+                }
+
+                // Not the redirect: no authorization code at all. Answer politely and keep
+                // waiting for the one we want.
+                if (string.IsNullOrEmpty(code))
+                {
+                    await RespondAsync(context, WaitingHtml, HttpStatusCode.NotFound);
+                    _logger.LogDebug("Ignoring an unrelated request while awaiting the OAuth redirect.");
+                    continue;
+                }
+
+                // A code with the wrong state is not a stray request — it is either a stale
+                // attempt or a forgery, and neither should be accepted.
+                if (!string.Equals(state, expectedState, StringComparison.Ordinal))
+                {
+                    await RespondAsync(context, FailureHtml);
+                    _logger.LogWarning("Discarding OAuth callback with a mismatched state parameter.");
+                    return null;
+                }
+
+                await RespondAsync(context, SuccessHtml);
+                return new OAuthCallbackResult(code, state!);
             }
 
-            if (!ok)
-            {
-                _logger.LogWarning("Discarding OAuth callback with a mismatched state parameter.");
-                return null;
-            }
-
-            return new OAuthCallbackResult(code!, state!);
+            return null;
         }
         catch (Exception ex) when (ex is HttpListenerException or ObjectDisposedException)
         {
@@ -102,9 +125,11 @@ public sealed class LoopbackOAuthListener
         }
     }
 
-    private static async Task RespondAsync(HttpListenerContext context, string html)
+    private static async Task RespondAsync(
+        HttpListenerContext context, string html, HttpStatusCode status = HttpStatusCode.OK)
     {
         var bytes = System.Text.Encoding.UTF8.GetBytes(html);
+        context.Response.StatusCode = (int)status;
         context.Response.ContentType = "text/html; charset=utf-8";
         context.Response.ContentLength64 = bytes.Length;
         await context.Response.OutputStream.WriteAsync(bytes);
