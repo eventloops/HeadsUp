@@ -29,8 +29,23 @@ public interface ISlackAppCredentialProvider
     /// Returns the current credentials, or <c>null</c> if none are available yet (e.g. the
     /// user has not completed sign-in). Pass <paramref name="forceRefresh"/> after an auth
     /// failure to renew rather than return a cached — possibly rotated-out — token.
+    ///
+    /// <b>May block for a long time</b>: with no usable token this waits for the connect gate
+    /// and then for the user to finish signing in through a browser. Only callers that exist
+    /// to establish a connection should use it — see
+    /// <see cref="GetExistingCredentialsAsync"/> for everything else.
     /// </summary>
     Task<SlackAppCredentials?> GetCredentialsAsync(bool forceRefresh, CancellationToken ct);
+
+    /// <summary>
+    /// Returns already-established credentials, or <c>null</c> — never prompts and never waits
+    /// on a sign-in that is already under way.
+    ///
+    /// This exists so that incidental consumers (the workspace directory behind the
+    /// priority-people picker, for instance) degrade to "nothing to show" instead of hanging
+    /// for however long a user takes to complete a browser sign-in.
+    /// </summary>
+    Task<SlackAppCredentials?> GetExistingCredentialsAsync(CancellationToken ct);
 }
 
 /// <summary>
@@ -57,4 +72,8 @@ public sealed class ConfigSlackAppCredentialProvider : ISlackAppCredentialProvid
         return Task.FromResult<SlackAppCredentials?>(
             new SlackAppCredentials(o.ClientId, o.AppToken, o.UserToken));
     }
+
+    /// <summary>Config credentials are never interactive, so this is the same read.</summary>
+    public Task<SlackAppCredentials?> GetExistingCredentialsAsync(CancellationToken ct) =>
+        GetCredentialsAsync(false, ct);
 }

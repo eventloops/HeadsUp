@@ -29,6 +29,8 @@ public sealed class OAuthSlackAppCredentialProvider : ISlackAppCredentialProvide
     private readonly AppStatus _status;
     private readonly ILogger<OAuthSlackAppCredentialProvider> _logger;
     private readonly SemaphoreSlim _lock = new(1, 1);
+    // Separate from _lock so a long interactive sign-in serialises without blocking reads.
+    private readonly SemaphoreSlim _signIn = new(1, 1);
 
     private SlackTokenSet? _cached;
 
@@ -58,33 +60,78 @@ public sealed class OAuthSlackAppCredentialProvider : ISlackAppCredentialProvide
 
     public async Task<SlackAppCredentials?> GetCredentialsAsync(bool forceRefresh, CancellationToken ct)
     {
+        // The lock covers only the store read and the token renewal — both quick. The
+        // interactive sign-in below deliberately runs outside it: holding a provider-wide lock
+        // for however long a browser sign-in takes would block every other consumer, and the
+        // workspace directory would hang instead of showing an empty list.
+        var tokens = await RenewOrLoadAsync(forceRefresh, ct);
+        if (tokens is not null)
+            return ToCredentials(tokens);
+
+        // Nothing usable stored: this is a real sign-in, so hold until the user asks for it.
+        await _gate.WaitAsync(ct);
+
+        await _signIn.WaitAsync(ct);
+        try
+        {
+            // Another caller may have completed a sign-in while we waited for this lock.
+            var existing = await RenewOrLoadAsync(false, ct);
+            if (existing is not null)
+                return ToCredentials(existing);
+
+            var signedIn = await SignInAsync(ct);
+            if (signedIn is null)
+                return null;
+
+            await _lock.WaitAsync(ct);
+            try
+            {
+                _cached = signedIn;
+            }
+            finally
+            {
+                _lock.Release();
+            }
+
+            return ToCredentials(signedIn);
+        }
+        finally
+        {
+            _signIn.Release();
+        }
+    }
+
+    public async Task<SlackAppCredentials?> GetExistingCredentialsAsync(CancellationToken ct)
+    {
+        var tokens = await RenewOrLoadAsync(false, ct);
+        return tokens is null ? null : ToCredentials(tokens);
+    }
+
+    /// <summary>
+    /// Loads the stored tokens and renews them if needed. Returns null when there is nothing
+    /// usable — the caller decides whether that warrants an interactive sign-in.
+    /// </summary>
+    private async Task<SlackTokenSet?> RenewOrLoadAsync(bool forceRefresh, CancellationToken ct)
+    {
         await _lock.WaitAsync(ct);
         try
         {
             var tokens = _cached ??= await _store.LoadAsync(ct);
 
-            // A stored token only needs the browser again if it can't be renewed.
             if (tokens is not null && (forceRefresh || tokens.NeedsRefresh(RefreshSkew)))
                 tokens = await TryRefreshAsync(tokens, ct);
 
-            // Nothing usable stored: this is a real sign-in, so hold until the user asks for it.
-            if (tokens is null)
-            {
-                await _gate.WaitAsync(ct);
-                tokens = await SignInAsync(ct);
-            }
-
-            if (tokens is null)
-                return null;
-
             _cached = tokens;
-            return new SlackAppCredentials(tokens.ClientId, tokens.AppToken, tokens.UserToken);
+            return tokens;
         }
         finally
         {
             _lock.Release();
         }
     }
+
+    private static SlackAppCredentials ToCredentials(SlackTokenSet tokens) =>
+        new(tokens.ClientId, tokens.AppToken, tokens.UserToken);
 
     /// <summary>
     /// Renews an access token, returning null if it can't be renewed — a refresh token that
@@ -112,12 +159,23 @@ public sealed class OAuthSlackAppCredentialProvider : ISlackAppCredentialProvide
             _logger.LogInformation("Renewed the Slack user token.");
             return updated;
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "Could not renew the Slack token; a fresh sign-in is needed.");
-            await _store.ClearAsync(ct);
+            // Slack answered ok:false — the refresh token is revoked or has aged out (they
+            // expire after 30 days). Only this genuinely means "sign in again", so only this
+            // discards the stored credentials.
+            _logger.LogWarning(ex, "Slack rejected the refresh token; a fresh sign-in is needed.");
+            await _store.ClearAsync(CancellationToken.None);
             _cached = null;
             return null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Transport failure: offline, DNS, Slack having a moment. The stored token is very
+            // probably still good, so keep it and let the next round try again. Wiping here
+            // would turn a brief network blip into a mandatory browser sign-in.
+            _logger.LogWarning(ex, "Could not reach Slack to renew the token; keeping it and retrying.");
+            return tokens.NeedsRefresh(TimeSpan.Zero) ? null : tokens;
         }
     }
 

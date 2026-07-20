@@ -43,7 +43,7 @@ public sealed class SlackApiUserDirectory : IUserDirectory
             if (!forceRefresh && _cache is not null)
                 return _cache;
 
-            var creds = await _credentials.GetCredentialsAsync(false, ct);
+            var creds = await _credentials.GetExistingCredentialsAsync(ct);
             if (creds is null)
                 return _cache ?? Array.Empty<DirectoryUser>();
 

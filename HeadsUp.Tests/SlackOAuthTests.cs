@@ -153,9 +153,7 @@ public class SlackOAuthClientTests
     [Fact]
     public async Task Refresh_posts_the_refresh_grant_without_pkce_parameters()
     {
-        var handler = new CapturingHandler("""
-            {"ok":true,"authed_user":{"access_token":"xoxp-2","refresh_token":"xoxe-2","expires_in":43200}}
-            """);
+        var handler = new CapturingHandler(RefreshResponse);
 
         var tokens = await Client(handler).RefreshAsync(ClientId, "xoxe-1");
 
@@ -164,6 +162,48 @@ public class SlackOAuthClientTests
         Assert.DoesNotContain("code_verifier", handler.LastBody);
         // Slack rotates the refresh token, so the new one must come back for persisting.
         Assert.Equal("xoxe-2", tokens.RefreshToken);
+    }
+
+    /// <summary>
+    /// The real shape of a user-token refresh, per Slack's token-rotation docs: flat, with
+    /// token_type "user" and <b>no</b> authed_user wrapper — unlike the authorization_code
+    /// exchange, which nests. Requiring the nested shape made every renewal throw, so every
+    /// rotation forced a full browser sign-in.
+    /// </summary>
+    private const string RefreshResponse = """
+        {"ok":true,"id":"U1234","scope":"channels:history","token_type":"user",
+         "access_token":"xoxe.xoxp-2","refresh_token":"xoxe-2","expires_in":43200}
+        """;
+
+    [Fact]
+    public async Task A_flat_refresh_response_yields_the_renewed_user_token()
+    {
+        var tokens = await Client(new CapturingHandler(RefreshResponse)).RefreshAsync(ClientId, "xoxe-1");
+
+        Assert.Equal("xoxe.xoxp-2", tokens.AccessToken);
+        Assert.Equal("xoxe-2", tokens.RefreshToken);
+        Assert.NotNull(tokens.ExpiresAt);
+    }
+
+    [Fact]
+    public async Task A_flat_response_that_is_not_a_user_token_is_refused()
+    {
+        // Guards the reason the top level was originally rejected outright: a bot token must
+        // never be handed back as the user's, or we connect as the wrong identity.
+        var handler = new CapturingHandler(
+            """{"ok":true,"token_type":"bot","access_token":"xoxb-bot","expires_in":43200}""");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Client(handler).RefreshAsync(ClientId, "xoxe-1"));
+    }
+
+    [Fact]
+    public async Task A_flat_response_with_no_token_type_is_refused()
+    {
+        var handler = new CapturingHandler("""{"ok":true,"access_token":"xoxb-ambiguous"}""");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Client(handler).RefreshAsync(ClientId, "xoxe-1"));
     }
 
     /// <summary>Returns one canned JSON body and records the form that was posted.</summary>

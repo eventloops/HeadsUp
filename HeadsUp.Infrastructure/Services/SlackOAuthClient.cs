@@ -117,11 +117,30 @@ public sealed class SlackOAuthClient
             throw new InvalidOperationException($"Slack OAuth failed: {error}");
         }
 
-        // User tokens arrive nested under authed_user; the top level carries the *bot* token.
-        // Never fall back to the top level — mistaking a bot token for the user token would
-        // silently connect as the wrong identity and see the wrong conversations.
-        if (!json.TryGetProperty("authed_user", out var authed))
-            throw new InvalidOperationException("Slack OAuth response contained no authed_user.");
+        // The two grants answer in different shapes, and getting this wrong is silent:
+        //
+        //   authorization_code -> the user token is nested under "authed_user"; the top level
+        //                         describes the *bot* installation.
+        //   refresh_token      -> the renewed user token is at the TOP level, with
+        //                         "token_type":"user" and no authed_user at all.
+        //
+        // So the top level is only safe to read once it has identified itself as a user token.
+        // Falling back to it unconditionally would hand out a bot token as the user's, silently
+        // connecting as the wrong identity and seeing the wrong conversations.
+        JsonElement authed;
+        if (json.TryGetProperty("authed_user", out var nested))
+        {
+            authed = nested;
+        }
+        else if (IsUserToken(json))
+        {
+            authed = json;
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                "Slack OAuth response contained neither authed_user nor a top-level user token.");
+        }
 
         var accessToken = authed.TryGetProperty("access_token", out var at) ? at.GetString() : null;
         if (string.IsNullOrWhiteSpace(accessToken))
@@ -134,4 +153,14 @@ public sealed class SlackOAuthClient
 
         return new SlackOAuthTokens(accessToken, refresh, expiresAt);
     }
+
+    /// <summary>
+    /// True when a response body is itself a user token, which is how the refresh grant
+    /// answers. The <c>token_type</c> discriminator is what keeps a bot token from ever being
+    /// mistaken for the user's.
+    /// </summary>
+    private static bool IsUserToken(JsonElement json) =>
+        json.TryGetProperty("token_type", out var type) &&
+        type.ValueKind == JsonValueKind.String &&
+        string.Equals(type.GetString(), "user", StringComparison.OrdinalIgnoreCase);
 }

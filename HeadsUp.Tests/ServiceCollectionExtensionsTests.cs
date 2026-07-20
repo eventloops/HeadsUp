@@ -156,6 +156,9 @@ public class ServiceCollectionExtensionsTests
         public string SourceDescription => "custom";
         public Task<SlackAppCredentials?> GetCredentialsAsync(bool forceRefresh, CancellationToken ct) =>
             Task.FromResult<SlackAppCredentials?>(null);
+
+        public Task<SlackAppCredentials?> GetExistingCredentialsAsync(CancellationToken ct) =>
+            Task.FromResult<SlackAppCredentials?>(null);
     }
 
     private sealed class CustomCredentialProvider : ISlackCredentialProvider
