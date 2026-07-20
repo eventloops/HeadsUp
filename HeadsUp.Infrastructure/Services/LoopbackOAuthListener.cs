@@ -46,10 +46,18 @@ public sealed class LoopbackOAuthListener
     /// checked before the code is accepted, which is what stops another local process from
     /// feeding us a code of its own.
     /// </summary>
-    public async Task<OAuthCallbackResult?> WaitForCallbackAsync(string expectedState, CancellationToken ct)
+    public Task<OAuthCallbackResult?> WaitForCallbackAsync(string expectedState, CancellationToken ct) =>
+        WaitForCallbackAsync(expectedState, Port, ct);
+
+    /// <summary>
+    /// As above, on a caller-chosen port. The relay sign-in uses its own so it can't collide
+    /// with a Slack sign-in happening on the same machine.
+    /// </summary>
+    public async Task<OAuthCallbackResult?> WaitForCallbackAsync(
+        string expectedState, int port, CancellationToken ct)
     {
         using var listener = new HttpListener();
-        listener.Prefixes.Add($"http://localhost:{Port}/");
+        listener.Prefixes.Add($"http://localhost:{port}/");
 
         try
         {
@@ -58,7 +66,7 @@ public sealed class LoopbackOAuthListener
         catch (HttpListenerException ex)
         {
             throw new InvalidOperationException(
-                $"Could not listen on port {Port} for the Slack sign-in redirect. " +
+                $"Could not listen on port {port} for the sign-in redirect. " +
                 "Close whatever is using that port and try connecting again.", ex);
         }
 
@@ -116,6 +124,61 @@ public sealed class LoopbackOAuthListener
         {
             // Expected when the listener is stopped by cancellation.
             _logger.LogDebug("Slack sign-in listener stopped before a redirect arrived.");
+            return null;
+        }
+        finally
+        {
+            if (listener.IsListening)
+                listener.Stop();
+        }
+    }
+
+    /// <summary>
+    /// Waits for the relay's post-sign-in redirect and returns the session token it carries.
+    ///
+    /// Same shape as the Slack callback — ignore anything that isn't the redirect we're waiting
+    /// for — but the relay hands back a <c>session</c> rather than an authorization code.
+    /// </summary>
+    public async Task<string?> WaitForSessionAsync(int port, CancellationToken ct)
+    {
+        using var listener = new HttpListener();
+        listener.Prefixes.Add($"http://localhost:{port}/");
+
+        try
+        {
+            listener.Start();
+        }
+        catch (HttpListenerException ex)
+        {
+            throw new InvalidOperationException(
+                $"Could not listen on port {port} for the relay sign-in redirect. " +
+                "Close whatever is using that port and try connecting again.", ex);
+        }
+
+        try
+        {
+            using var registration = ct.Register(() => listener.Stop());
+
+            while (!ct.IsCancellationRequested)
+            {
+                var context = await listener.GetContextAsync();
+                var session = context.Request.QueryString["session"];
+
+                if (string.IsNullOrEmpty(session))
+                {
+                    await RespondAsync(context, WaitingHtml, HttpStatusCode.NotFound);
+                    continue;
+                }
+
+                await RespondAsync(context, SuccessHtml);
+                return session;
+            }
+
+            return null;
+        }
+        catch (Exception ex) when (ex is HttpListenerException or ObjectDisposedException)
+        {
+            _logger.LogDebug("Relay sign-in listener stopped before a redirect arrived.");
             return null;
         }
         finally

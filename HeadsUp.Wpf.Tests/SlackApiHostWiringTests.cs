@@ -51,6 +51,52 @@ public class SlackApiHostWiringTests
         Assert.NotNull(host.Services.GetRequiredService<IUserDirectory>());
     }
 
+    // ------------------------------------------------------------------
+    // Relay mode
+    // ------------------------------------------------------------------
+
+    private static IHost BuildRelayHost() =>
+        HeadsUp.Program.CreateHostBuilder([
+            "--Detection:Connectors:0:Type=SlackRelay",
+            "--Relay:BaseUrl=http://localhost:5285",
+        ]).Build();
+
+    [Fact]
+    public void The_relay_connector_composes()
+    {
+        using var host = BuildRelayHost();
+
+        var source = host.Services.GetRequiredService<SlackRelaySource>();
+        Assert.Same(source, host.Services.GetRequiredService<IAlertSource>());
+        Assert.Contains(host.Services.GetServices<IHostedService>(), s => s is SlackRelaySource);
+    }
+
+    [Fact]
+    public void Relay_mode_has_a_way_to_sign_in()
+    {
+        using var host = BuildRelayHost();
+
+        // The config-only provider needed a session and user id that no flow produced, so the
+        // connector could never leave "Not signed in". The browser provider must win.
+        Assert.IsType<RelaySignInCredentialProvider>(
+            host.Services.GetRequiredService<IRelayCredentialProvider>());
+        Assert.IsType<FileRelaySessionStore>(host.Services.GetRequiredService<IRelaySessionStore>());
+    }
+
+    [Fact]
+    public void The_dashboard_can_be_opened_in_relay_mode()
+    {
+        // DashboardViewModel requires an IUserDirectory; without one registered, opening the
+        // dashboard threw an unresolvable-service exception in the tray command path.
+        using var host = BuildRelayHost();
+
+        var directory = host.Services.GetRequiredService<IUserDirectory>();
+
+        Assert.IsType<UnavailableUserDirectory>(directory);
+        // Honest about it rather than pretending to be an empty workspace.
+        Assert.False(directory.IsAvailable);
+    }
+
     [Fact]
     public void Round_tripping_tokens_through_dpapi_preserves_them()
     {

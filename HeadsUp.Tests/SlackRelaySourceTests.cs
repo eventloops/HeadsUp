@@ -273,3 +273,43 @@ public class SlackRelaySourceTests
             Task.FromResult<RelaySession?>(new RelaySession("token", SelfId));
     }
 }
+
+/// <summary>
+/// The relay hands the desktop only a session token; the Slack user id lives in its subject
+/// claim. That is precisely why hand-configuring relay mode was unreasonable — the value a
+/// user would have had to supply is buried inside another value they were also supplying.
+/// </summary>
+public class RelaySessionSubjectTests
+{
+    private static string Jwt(string payloadJson) =>
+        "eyJhbGciOiJIUzI1NiJ9." +
+        Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(payloadJson))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_') +
+        ".signature";
+
+    [Fact]
+    public void The_subject_claim_is_read()
+    {
+        Assert.Equal("U_ALICE", RelaySignInCredentialProvider.ReadSubject(Jwt("""{"sub":"U_ALICE"}""")));
+    }
+
+    [Fact]
+    public void A_payload_needing_base64url_padding_still_decodes()
+    {
+        // Lengths that aren't a multiple of four are the usual source of intermittent breakage.
+        Assert.Equal("U_ABCDEFGHIJK",
+            RelaySignInCredentialProvider.ReadSubject(Jwt("""{"sub":"U_ABCDEFGHIJK","iss":"headsup-relay"}""")));
+    }
+
+    [Fact]
+    public void A_token_without_a_subject_yields_null() =>
+        Assert.Null(RelaySignInCredentialProvider.ReadSubject(Jwt("""{"iss":"headsup-relay"}""")));
+
+    [Theory]
+    [InlineData("not-a-jwt")]
+    [InlineData("a.b")]
+    [InlineData("a.!!!.c")]
+    [InlineData("")]
+    public void A_malformed_token_yields_null(string jwt) =>
+        Assert.Null(RelaySignInCredentialProvider.ReadSubject(jwt));
+}

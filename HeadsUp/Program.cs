@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Events;
@@ -111,6 +112,22 @@ internal static class Program
                     services.AddSingleton<LoopbackOAuthListener>();
                     services.AddHttpClient<SlackOAuthClient>();
                     services.AddSingleton<ISlackAppCredentialProvider, OAuthSlackAppCredentialProvider>();
+                }
+
+                // Relay mode signs in through the browser and stores the resulting session
+                // encrypted. Registered here, before AddConnector, so its TryAdd leaves this in
+                // place rather than the config-only provider — which needed values no flow
+                // produces, leaving the connector with no way to sign in at all.
+                var wantsRelay = connectors.Any(c =>
+                    string.Equals(c.Type, DetectionOptions.SlackRelay, StringComparison.OrdinalIgnoreCase));
+                if (wantsRelay)
+                {
+                    services.AddSingleton<ConnectionGate>();
+                    services.TryAddSingleton<ITokenProtector, DpapiTokenProtector>();
+                    services.TryAddSingleton<IBrowserLauncher, SystemBrowserLauncher>();
+                    services.TryAddSingleton<LoopbackOAuthListener>();
+                    services.AddSingleton<IRelaySessionStore, FileRelaySessionStore>();
+                    services.AddSingleton<IRelayCredentialProvider, RelaySignInCredentialProvider>();
                 }
 
                 foreach (var connector in connectors)

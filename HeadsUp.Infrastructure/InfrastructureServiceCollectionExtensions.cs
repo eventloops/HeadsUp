@@ -121,6 +121,11 @@ public static class InfrastructureServiceCollectionExtensions
         // leaves that one in place.
         services.TryAddSingleton<IRelayCredentialProvider, ConfigRelayCredentialProvider>();
 
+        // In relay mode the desktop holds no Slack token, so it cannot search the workspace
+        // itself. Registered explicitly because the dashboard requires an IUserDirectory —
+        // without one, opening it threw rather than degrading.
+        services.TryAddSingleton<IUserDirectory, UnavailableUserDirectory>();
+
         services.AddSingleton<SlackRelaySource>();
         services.AddSingleton<IAlertSource>(sp => sp.GetRequiredService<SlackRelaySource>());
         services.AddHostedService(sp => sp.GetRequiredService<SlackRelaySource>());
