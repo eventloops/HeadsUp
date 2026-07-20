@@ -190,7 +190,16 @@ public sealed class SlackHuddleMonitor : BackgroundService, IAlertSource
             while (socket.Connected && !stoppingToken.IsCancellationRequested)
             {
                 await Task.Delay(_connectionPollInterval, stoppingToken);
-                await RenewApiClientAsync(stoppingToken);
+
+                // Losing credentials ends the connection rather than being absorbed. The
+                // membership gate fails open when its API calls error, so carrying on with a
+                // dead client would start admitting huddles from channels the user isn't in —
+                // silently, and for as long as the socket happened to stay up.
+                if (!await RenewApiClientAsync(stoppingToken))
+                {
+                    _logger.LogWarning("Slack credentials are no longer usable; reconnecting to re-authenticate.");
+                    break;
+                }
             }
         }
         finally
@@ -209,23 +218,35 @@ public sealed class SlackHuddleMonitor : BackgroundService, IAlertSource
     /// <summary>
     /// Rebinds the Web API client when the user token has been renewed underneath us. Cheap and
     /// silent in the common case: the provider returns the cached token until it nears expiry.
+    ///
+    /// Returns false when credentials have gone for good — a revoked or aged-out refresh token
+    /// — which the caller treats as a reason to reconnect rather than continue.
     /// </summary>
-    private async Task RenewApiClientAsync(CancellationToken ct)
+    private async Task<bool> RenewApiClientAsync(CancellationToken ct)
     {
         try
         {
             var current = await _credentials.GetExistingCredentialsAsync(ct);
-            if (current is null || current.UserToken == _boundUserToken)
-                return;
+
+            // No credentials at all: the refresh token was rejected and the store cleared.
+            // Continuing would leave a dead client behind a fail-open membership gate.
+            if (current is null)
+                return false;
+
+            if (current.UserToken == _boundUserToken)
+                return true;
 
             _apiClient = _clientFactory.CreateApiClient(current);
             _boundUserToken = current.UserToken;
             _logger.LogDebug("Rebound the Slack API client to a renewed user token.");
+            return true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Keep the existing client; the next poll tries again.
-            _logger.LogDebug(ex, "Could not renew the Slack API credentials this round.");
+            // A transient failure to check is not evidence the credentials are gone; keep the
+            // existing client and try again next poll.
+            _logger.LogDebug(ex, "Could not check the Slack API credentials this round.");
+            return true;
         }
     }
 

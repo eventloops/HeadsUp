@@ -24,13 +24,11 @@ public sealed class OAuthSlackAppCredentialProvider : ISlackAppCredentialProvide
     private readonly LoopbackOAuthListener _listener;
     private readonly IBrowserLauncher _browser;
     private readonly ISlackAppSetupPrompt _setupPrompt;
-    private readonly ConnectionGate _gate;
+    private readonly BrowserSignInCoordinator _signInCoordinator;
     private readonly IOptionsMonitor<SlackOptions> _options;
     private readonly AppStatus _status;
     private readonly ILogger<OAuthSlackAppCredentialProvider> _logger;
     private readonly SemaphoreSlim _lock = new(1, 1);
-    // Separate from _lock so a long interactive sign-in serialises without blocking reads.
-    private readonly SemaphoreSlim _signIn = new(1, 1);
 
     private SlackTokenSet? _cached;
 
@@ -40,7 +38,7 @@ public sealed class OAuthSlackAppCredentialProvider : ISlackAppCredentialProvide
         LoopbackOAuthListener listener,
         IBrowserLauncher browser,
         ISlackAppSetupPrompt setupPrompt,
-        ConnectionGate gate,
+        BrowserSignInCoordinator signInCoordinator,
         IOptionsMonitor<SlackOptions> options,
         AppStatus status,
         ILogger<OAuthSlackAppCredentialProvider> logger)
@@ -50,7 +48,7 @@ public sealed class OAuthSlackAppCredentialProvider : ISlackAppCredentialProvide
         _listener = listener;
         _browser = browser;
         _setupPrompt = setupPrompt;
-        _gate = gate;
+        _signInCoordinator = signInCoordinator;
         _options = options;
         _status = status;
         _logger = logger;
@@ -68,37 +66,31 @@ public sealed class OAuthSlackAppCredentialProvider : ISlackAppCredentialProvide
         if (tokens is not null)
             return ToCredentials(tokens);
 
-        // Nothing usable stored: this is a real sign-in, so hold until the user asks for it.
-        await _gate.WaitAsync(ct);
+        // Nothing usable stored: a real sign-in, so hold until the user asks for it. The
+        // coordinator also closes the gate again if the user abandons the browser, which is
+        // what stops a new window opening on every reconnect.
+        var signedIn = await _signInCoordinator.SignInAsync(
+            alreadySignedIn: RenewOrLoadAsync2,
+            signIn: SignInAsync,
+            ct);
 
-        await _signIn.WaitAsync(ct);
+        if (signedIn is null)
+            return null;
+
+        await _lock.WaitAsync(ct);
         try
         {
-            // Another caller may have completed a sign-in while we waited for this lock.
-            var existing = await RenewOrLoadAsync(false, ct);
-            if (existing is not null)
-                return ToCredentials(existing);
-
-            var signedIn = await SignInAsync(ct);
-            if (signedIn is null)
-                return null;
-
-            await _lock.WaitAsync(ct);
-            try
-            {
-                _cached = signedIn;
-            }
-            finally
-            {
-                _lock.Release();
-            }
-
-            return ToCredentials(signedIn);
+            _cached = signedIn;
         }
         finally
         {
-            _signIn.Release();
+            _lock.Release();
         }
+
+        return ToCredentials(signedIn);
+
+        // Re-check after the sign-in lock: another caller may have completed one while we waited.
+        Task<SlackTokenSet?> RenewOrLoadAsync2(CancellationToken token) => RenewOrLoadAsync(false, token);
     }
 
     public async Task<SlackAppCredentials?> GetExistingCredentialsAsync(CancellationToken ct)

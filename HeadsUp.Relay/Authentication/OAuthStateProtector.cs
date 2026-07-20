@@ -33,37 +33,46 @@ public sealed class OAuthStateProtector
     }
 
     /// <summary>
-    /// Signs a return address together with an issue time and a nonce.
+    /// Signs the desktop's return address and its own state value, together with an issue time
+    /// and a nonce.
+    ///
+    /// The desktop's state is carried through so the callback can hand it back: without it the
+    /// desktop has no way to tell our redirect from any other local process posting a session
+    /// to its loopback port.
     ///
     /// The signature goes first so the return address can be taken as the whole remainder: a
     /// URL may legitimately contain the '|' separator (in a query string), and putting the
     /// signature last truncated exactly those addresses.
     /// </summary>
-    public string Protect(string returnTo)
+    public string Protect(string returnTo, string desktopState = "")
     {
         var nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(8));
         var issuedAt = _clock.GetUtcNow().ToUnixTimeSeconds();
-        var payload = $"{nonce}|{issuedAt}|{returnTo}";
+
+        // Separator-free by construction, so returnTo stays the unambiguous remainder.
+        var safeState = Convert.ToHexString(Encoding.UTF8.GetBytes(desktopState));
+
+        var payload = $"{nonce}|{issuedAt}|{safeState}|{returnTo}";
         return Base64Url($"{Sign(payload)}|{payload}");
     }
 
     /// <summary>
-    /// Returns the return address, or null if the state wasn't issued by us, has been tampered
-    /// with, or has expired.
+    /// Returns the return address and the desktop's state, or null if the value wasn't issued
+    /// by us, has been tampered with, or has expired.
     /// </summary>
-    public string? Unprotect(string state)
+    public (string ReturnTo, string DesktopState)? Unprotect(string state)
     {
         try
         {
             var decoded = Encoding.UTF8.GetString(FromBase64Url(state));
 
-            // Limit of 4 so the final field keeps any '|' the return address contains.
-            var parts = decoded.Split('|', 4);
-            if (parts.Length != 4)
+            // Limit of 5 so the final field keeps any '|' the return address contains.
+            var parts = decoded.Split('|', 5);
+            if (parts.Length != 5)
                 return null;
 
             var signature = parts[0];
-            var payload = $"{parts[1]}|{parts[2]}|{parts[3]}";
+            var payload = $"{parts[1]}|{parts[2]}|{parts[3]}|{parts[4]}";
 
             // Fixed-time comparison: a signature check that leaks timing is a forgeable one.
             if (!CryptographicOperations.FixedTimeEquals(
@@ -77,7 +86,8 @@ public sealed class OAuthStateProtector
             if (age > Lifetime || age < -TimeSpan.FromMinutes(1))
                 return null;
 
-            return parts[3];
+            var desktopState = Encoding.UTF8.GetString(Convert.FromHexString(parts[3]));
+            return (parts[4], desktopState);
         }
         catch
         {

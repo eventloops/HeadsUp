@@ -24,7 +24,7 @@ public class OAuthStateProtectorTests
     {
         var protector = Protector();
 
-        Assert.Equal(ReturnTo, protector.Unprotect(protector.Protect(ReturnTo)));
+        Assert.Equal(ReturnTo, protector.Unprotect(protector.Protect(ReturnTo))?.ReturnTo);
     }
 
     [Fact]
@@ -39,11 +39,11 @@ public class OAuthStateProtectorTests
     public void A_tampered_return_address_is_rejected()
     {
         // The whole point: swapping the address must invalidate the signature.
-        // Layout is signature|nonce|issuedAt|returnTo — swap the address, keep the signature.
+        // Layout is signature|nonce|issuedAt|desktopState|returnTo — swap the address only.
         var state = Protector().Protect(ReturnTo);
         var decoded = System.Text.Encoding.UTF8.GetString(FromBase64Url(state));
-        var parts = decoded.Split('|', 4);
-        var tampered = ToBase64Url($"{parts[0]}|{parts[1]}|{parts[2]}|http://localhost:9999/evil");
+        var parts = decoded.Split('|', 5);
+        var tampered = ToBase64Url($"{parts[0]}|{parts[1]}|{parts[2]}|{parts[3]}|http://localhost:9999/evil");
 
         Assert.Null(Protector().Unprotect(tampered));
     }
@@ -66,7 +66,7 @@ public class OAuthStateProtectorTests
 
         _clock.Advance(TimeSpan.FromMinutes(5));
 
-        Assert.Equal(ReturnTo, Protector().Unprotect(state));
+        Assert.Equal(ReturnTo, Protector().Unprotect(state)?.ReturnTo);
     }
 
     [Fact]
@@ -96,7 +96,56 @@ public class OAuthStateProtectorTests
 
         var protector = Protector();
 
-        Assert.Equal(withPipe, protector.Unprotect(protector.Protect(withPipe)));
+        Assert.Equal(withPipe, protector.Unprotect(protector.Protect(withPipe))?.ReturnTo);
+    }
+
+    // ------------------------------------------------------------------
+    // The desktop's own state
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void The_desktops_state_survives_the_round_trip()
+    {
+        // Echoing this back is what lets the desktop tell our redirect from any other local
+        // process posting a session to its loopback port.
+        var protector = Protector();
+
+        var unprotected = protector.Unprotect(protector.Protect(ReturnTo, "abc123"));
+
+        Assert.Equal("abc123", unprotected?.DesktopState);
+        Assert.Equal(ReturnTo, unprotected?.ReturnTo);
+    }
+
+    [Fact]
+    public void A_desktop_state_containing_a_separator_does_not_corrupt_the_return_address()
+    {
+        // Hex-encoded on the way in precisely so it can't introduce a delimiter.
+        var protector = Protector();
+
+        var unprotected = protector.Unprotect(protector.Protect(ReturnTo, "a|b|c"));
+
+        Assert.Equal("a|b|c", unprotected?.DesktopState);
+        Assert.Equal(ReturnTo, unprotected?.ReturnTo);
+    }
+
+    [Fact]
+    public void A_tampered_desktop_state_is_rejected()
+    {
+        var state = Protector().Protect(ReturnTo, "abc123");
+        var decoded = System.Text.Encoding.UTF8.GetString(FromBase64Url(state));
+        var parts = decoded.Split('|', 5);
+        var tampered = ToBase64Url(
+            $"{parts[0]}|{parts[1]}|{parts[2]}|{Convert.ToHexString("evil"u8.ToArray())}|{parts[4]}");
+
+        Assert.Null(Protector().Unprotect(tampered));
+    }
+
+    [Fact]
+    public void An_absent_desktop_state_round_trips_as_empty()
+    {
+        var protector = Protector();
+
+        Assert.Equal(string.Empty, protector.Unprotect(protector.Protect(ReturnTo))?.DesktopState);
     }
 
     // ------------------------------------------------------------------

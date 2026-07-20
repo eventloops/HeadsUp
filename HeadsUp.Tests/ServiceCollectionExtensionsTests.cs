@@ -132,6 +132,54 @@ public class ServiceCollectionExtensionsTests
         Assert.Null(creds);
     }
 
+    [Theory]
+    [InlineData("SlackApi", "SlackRelay")]
+    [InlineData("SlackRelay", "SlackApi")]
+    public void A_real_directory_wins_whichever_order_the_connectors_are_configured(string first, string second)
+    {
+        // Relay mode can't search the workspace, so it supplies UnavailableUserDirectory. When
+        // both connectors run, TryAdd made the winner depend on config order — list SlackRelay
+        // first and the picker went silently empty even though SlackApi could serve it.
+        var config = Config(
+            ("Detection:Connectors:0:Type", first),
+            ("Detection:Connectors:1:Type", second),
+            ("Slack:ClientId", "123.456"),
+            ("Slack:AppToken", "xapp-1"),
+            ("Slack:UserToken", "xoxp-1"));
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<INotificationService, RecordingNotificationService>();
+        services.AddHeadsUpApplication(config);
+        services.AddHeadsUpInfrastructure(config);
+        services.AddSlackApiHuddleDetection(config);
+        services.AddSlackRelayDetection(config);
+        services.AddConnectorFallbacks();
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.IsType<SlackApiUserDirectory>(provider.GetRequiredService<IUserDirectory>());
+    }
+
+    [Fact]
+    public void Relay_only_still_gets_a_directory_so_the_dashboard_opens()
+    {
+        var config = Config(("Detection:Connectors:0:Type", "SlackRelay"));
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<INotificationService, RecordingNotificationService>();
+        services.AddHeadsUpApplication(config);
+        services.AddHeadsUpInfrastructure(config);
+        services.AddSlackRelayDetection(config);
+        services.AddConnectorFallbacks();
+
+        using var provider = services.BuildServiceProvider();
+
+        var directory = provider.GetRequiredService<IUserDirectory>();
+        Assert.IsType<UnavailableUserDirectory>(directory);
+        Assert.False(directory.IsAvailable);
+    }
+
     private static ServiceProvider BuildSlackApiProvider(
         Action<IServiceCollection>? beforeCore = null, IConfiguration? config = null)
     {

@@ -26,7 +26,7 @@ public class OAuthCredentialProviderTests
             new LoopbackOAuthListener(NullLogger<LoopbackOAuthListener>.Instance),
             _browser,
             _setupPrompt,
-            _gate,
+            new BrowserSignInCoordinator(_gate),
             new StaticMonitor<SlackOptions>(_options),
             _status,
             NullLogger<OAuthSlackAppCredentialProvider>.Instance);

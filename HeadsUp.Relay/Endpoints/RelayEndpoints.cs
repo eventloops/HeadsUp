@@ -26,9 +26,10 @@ public static class RelayEndpoints
             if (!IsLoopback(returnTo))
                 return Results.BadRequest("return_to must be a loopback URL.");
 
-            // State carries the desktop's return address and is signed on the way out, so the
-            // callback can trust it came from us rather than being fabricated.
-            var state = states.Protect(returnTo);
+            // State carries the desktop's return address *and its own state value*, signed on
+            // the way out. Echoing the desktop's value back is what lets it tell our redirect
+            // from any other local process posting a session to its loopback port.
+            var state = states.Protect(returnTo, http.Request.Query["state"].ToString());
 
             return Results.Redirect(SlackOAuthExchange.BuildAuthorizeUrl(
                 opts.ClientId, opts.PublicUrl.TrimEnd('/') + CallbackPath, state, SlackOAuthClient.UserScopes));
@@ -52,7 +53,7 @@ public static class RelayEndpoints
             var code = http.Request.Query["code"].ToString();
             var state = http.Request.Query["state"].ToString();
 
-            if (states.Unprotect(state) is not { } returnTo)
+            if (states.Unprotect(state) is not var (returnTo, desktopState))
             {
                 logger.LogWarning("Discarding an OAuth callback with an untrusted state parameter.");
                 return Results.BadRequest("Invalid state.");
@@ -71,9 +72,12 @@ public static class RelayEndpoints
             logger.LogInformation("Issued a relay session for {UserId}.", identity.SlackUserId);
 
             // Handed back over loopback, so the token never leaves the user's machine except
-            // to us.
+            // to us. The desktop's own state goes back with it so the desktop can confirm this
+            // redirect answers the sign-in it started.
             var separator = returnTo.Contains('?') ? '&' : '?';
-            return Results.Redirect($"{returnTo}{separator}session={Uri.EscapeDataString(session)}");
+            return Results.Redirect(
+                $"{returnTo}{separator}session={Uri.EscapeDataString(session)}" +
+                $"&state={Uri.EscapeDataString(desktopState)}");
         });
 
         app.Map("/events", async (

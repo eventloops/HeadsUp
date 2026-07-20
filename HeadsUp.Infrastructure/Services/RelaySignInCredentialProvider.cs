@@ -37,19 +37,22 @@ public sealed class RelaySignInCredentialProvider : IRelayCredentialProvider
     private readonly IRelaySessionStore _store;
     private readonly LoopbackOAuthListener _listener;
     private readonly IBrowserLauncher _browser;
-    private readonly ConnectionGate _gate;
+    private readonly BrowserSignInCoordinator _signInCoordinator;
     private readonly IOptionsMonitor<RelayClientOptions> _options;
     private readonly AppStatus _status;
     private readonly ILogger<RelaySignInCredentialProvider> _logger;
-    private readonly SemaphoreSlim _signIn = new(1, 1);
+    private readonly SemaphoreSlim _lock = new(1, 1);
 
     private RelaySession? _cached;
+
+    /// <summary>True once the relay has refused the stored session, so it isn't re-offered.</summary>
+    private bool _rejected;
 
     public RelaySignInCredentialProvider(
         IRelaySessionStore store,
         LoopbackOAuthListener listener,
         IBrowserLauncher browser,
-        ConnectionGate gate,
+        BrowserSignInCoordinator signInCoordinator,
         IOptionsMonitor<RelayClientOptions> options,
         AppStatus status,
         ILogger<RelaySignInCredentialProvider> logger)
@@ -57,7 +60,7 @@ public sealed class RelaySignInCredentialProvider : IRelayCredentialProvider
         _store = store;
         _listener = listener;
         _browser = browser;
-        _gate = gate;
+        _signInCoordinator = signInCoordinator;
         _options = options;
         _status = status;
         _logger = logger;
@@ -69,37 +72,64 @@ public sealed class RelaySignInCredentialProvider : IRelayCredentialProvider
     {
         if (forceRefresh)
         {
-            // The relay refused what we had, so keeping it would just loop.
-            _cached = null;
-            await _store.ClearAsync(ct);
+            // Stop offering the rejected session, but leave the stored copy alone until a new
+            // one replaces it. A 401 usually does mean the session is dead, but not always —
+            // a relay restarting behind a proxy, or a header stripped in transit, would
+            // otherwise destroy a perfectly good session and force an avoidable sign-in.
+            await SetCachedAsync(null, ct);
+            _rejected = true;
         }
 
-        _cached ??= await _store.LoadAsync(ct);
-        if (_cached is not null)
-            return _cached;
+        if (await LoadAsync(ct) is { } current)
+            return current;
 
-        // A real sign-in opens a browser, so hold until the user asks to connect.
-        await _gate.WaitAsync(ct);
+        // A real sign-in opens a browser, so hold until the user asks to connect. The
+        // coordinator closes the gate again if they abandon it.
+        var session = await _signInCoordinator.SignInAsync(LoadAsync, SignInAsync, ct);
+        if (session is null)
+            return null;
 
-        await _signIn.WaitAsync(ct);
+        // Only now is the old session known to be superseded.
+        await _store.SaveAsync(session, ct);
+        await SetCachedAsync(session, ct);
+        _rejected = false;
+        return session;
+    }
+
+    /// <summary>
+    /// The usable session, or null. Skips the stored copy once the relay has rejected it, so a
+    /// refused session isn't re-offered on the next round.
+    /// </summary>
+    private async Task<RelaySession?> LoadAsync(CancellationToken ct)
+    {
+        await _lock.WaitAsync(ct);
         try
         {
-            // Another attempt may have finished while we waited.
-            _cached ??= await _store.LoadAsync(ct);
             if (_cached is not null)
                 return _cached;
 
-            var session = await SignInAsync(ct);
-            if (session is null)
+            if (_rejected)
                 return null;
 
-            await _store.SaveAsync(session, ct);
-            _cached = session;
-            return session;
+            _cached = await _store.LoadAsync(ct);
+            return _cached;
         }
         finally
         {
-            _signIn.Release();
+            _lock.Release();
+        }
+    }
+
+    private async Task SetCachedAsync(RelaySession? session, CancellationToken ct)
+    {
+        await _lock.WaitAsync(ct);
+        try
+        {
+            _cached = session;
+        }
+        finally
+        {
+            _lock.Release();
         }
     }
 
@@ -113,15 +143,16 @@ public sealed class RelaySignInCredentialProvider : IRelayCredentialProvider
             return null;
         }
 
-        // State is echoed back by the relay so a stray or stale callback can't be mistaken for
-        // this attempt; the relay signs it in transit.
+        // The relay carries this through the Slack round trip (signed, so it can't be altered)
+        // and hands it back on the redirect. Checking it is what stops another local process
+        // posting a session to our loopback port and connecting us as someone else.
         var state = Guid.NewGuid().ToString("N");
         var url = $"{baseUrl}?return_to={Uri.EscapeDataString(ReturnTo)}&state={state}";
 
         Status.SetConnection(false, "Waiting for sign-in…");
 
         // Listen before opening the browser so a fast redirect can't arrive first.
-        var callbackTask = _listener.WaitForSessionAsync(CallbackPort, ct);
+        var callbackTask = _listener.WaitForSessionAsync(state, CallbackPort, ct);
         _browser.Open(url);
 
         var token = await callbackTask;

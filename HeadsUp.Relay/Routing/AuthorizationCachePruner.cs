@@ -15,12 +15,16 @@ public sealed class AuthorizationCachePruner : BackgroundService
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
 
     private readonly CachingEventAuthorizationResolver _cache;
+    private readonly EventEnricher _enricher;
     private readonly ILogger<AuthorizationCachePruner> _logger;
 
     public AuthorizationCachePruner(
-        CachingEventAuthorizationResolver cache, ILogger<AuthorizationCachePruner> logger)
+        CachingEventAuthorizationResolver cache,
+        EventEnricher enricher,
+        ILogger<AuthorizationCachePruner> logger)
     {
         _cache = cache;
+        _enricher = enricher;
         _logger = logger;
     }
 
@@ -37,9 +41,11 @@ public sealed class AuthorizationCachePruner : BackgroundService
                 break;
             }
 
-            var removed = _cache.Prune();
+            // Both caches: the name cache would otherwise retain every id the relay has ever
+            // seen, which on a long-running server is a slow leak rather than a cache.
+            var removed = _cache.Prune() + _enricher.Prune();
             if (removed > 0)
-                _logger.LogDebug("Pruned {Count} expired authorization cache entries.", removed);
+                _logger.LogDebug("Pruned {Count} expired cache entries.", removed);
         }
     }
 }

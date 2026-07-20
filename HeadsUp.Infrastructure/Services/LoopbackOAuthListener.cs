@@ -138,8 +138,13 @@ public sealed class LoopbackOAuthListener
     ///
     /// Same shape as the Slack callback — ignore anything that isn't the redirect we're waiting
     /// for — but the relay hands back a <c>session</c> rather than an authorization code.
+    ///
+    /// <paramref name="expectedState"/> is not optional. A session arriving on this port is a
+    /// bearer credential for whoever it names, so without checking that it answers the sign-in
+    /// we actually started, any local process could hand us a session and we would connect to
+    /// the relay as someone else — receiving their huddles and direct messages.
     /// </summary>
-    public async Task<string?> WaitForSessionAsync(int port, CancellationToken ct)
+    public async Task<string?> WaitForSessionAsync(string expectedState, int port, CancellationToken ct)
     {
         using var listener = new HttpListener();
         listener.Prefixes.Add($"http://localhost:{port}/");
@@ -163,11 +168,22 @@ public sealed class LoopbackOAuthListener
             {
                 var context = await listener.GetContextAsync();
                 var session = context.Request.QueryString["session"];
+                var state = context.Request.QueryString["state"];
 
+                // Not the redirect at all — keep waiting for the one we want.
                 if (string.IsNullOrEmpty(session))
                 {
                     await RespondAsync(context, WaitingHtml, HttpStatusCode.NotFound);
                     continue;
+                }
+
+                // A session with the wrong state is not a stray request: it is a stale attempt
+                // or an injection, and accepting it would connect us as whoever it names.
+                if (!string.Equals(state, expectedState, StringComparison.Ordinal))
+                {
+                    await RespondAsync(context, FailureHtml);
+                    _logger.LogWarning("Discarding a relay session with a mismatched state parameter.");
+                    return null;
                 }
 
                 await RespondAsync(context, SuccessHtml);

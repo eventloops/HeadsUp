@@ -64,6 +64,21 @@ public static class InfrastructureServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// Fills in services no configured connector supplied. Call once, <b>after</b> every
+    /// <see cref="AddConnector"/>, so the result doesn't depend on the order connectors happen
+    /// to appear in configuration.
+    /// </summary>
+    public static IServiceCollection AddConnectorFallbacks(this IServiceCollection services)
+    {
+        // The dashboard requires an IUserDirectory; without one, opening it throws. A connector
+        // that can actually search the workspace has already registered a real one by now, so
+        // this only lands when none can — relay mode, where the desktop holds no Slack token.
+        services.TryAddSingleton<IUserDirectory, UnavailableUserDirectory>();
+
+        return services;
+    }
+
     /// <summary>Maps a connector route type to its source identity. All Slack routes are "slack".</summary>
     private static (SourceId Id, string Name) ConnectorIdentity(string type)
     {
@@ -121,10 +136,11 @@ public static class InfrastructureServiceCollectionExtensions
         // leaves that one in place.
         services.TryAddSingleton<IRelayCredentialProvider, ConfigRelayCredentialProvider>();
 
-        // In relay mode the desktop holds no Slack token, so it cannot search the workspace
-        // itself. Registered explicitly because the dashboard requires an IUserDirectory —
-        // without one, opening it threw rather than degrading.
-        services.TryAddSingleton<IUserDirectory, UnavailableUserDirectory>();
+        // Deliberately no IUserDirectory here. In relay mode the desktop holds no Slack token
+        // and cannot search the workspace, but registering the unavailable one via TryAdd would
+        // make the outcome depend on connector order in config: list SlackRelay before SlackApi
+        // and the real directory would silently lose. AddConnectorFallbacks supplies it once
+        // every connector has had its say.
 
         services.AddSingleton<SlackRelaySource>();
         services.AddSingleton<IAlertSource>(sp => sp.GetRequiredService<SlackRelaySource>());

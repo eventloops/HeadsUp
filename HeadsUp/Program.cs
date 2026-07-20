@@ -105,6 +105,7 @@ internal static class Program
                 if (wantsSlackApi)
                 {
                     services.AddSingleton<ConnectionGate>();
+                    services.TryAddSingleton<BrowserSignInCoordinator>();
                     services.AddSingleton<ITokenProtector, DpapiTokenProtector>();
                     services.AddSingleton<ISlackTokenStore, FileSlackTokenStore>();
                     services.AddSingleton<IBrowserLauncher, SystemBrowserLauncher>();
@@ -123,6 +124,7 @@ internal static class Program
                 if (wantsRelay)
                 {
                     services.AddSingleton<ConnectionGate>();
+                    services.TryAddSingleton<BrowserSignInCoordinator>();
                     services.TryAddSingleton<ITokenProtector, DpapiTokenProtector>();
                     services.TryAddSingleton<IBrowserLauncher, SystemBrowserLauncher>();
                     services.TryAddSingleton<LoopbackOAuthListener>();
@@ -132,6 +134,9 @@ internal static class Program
 
                 foreach (var connector in connectors)
                     services.AddConnector(ctx.Configuration, connector);
+
+                // After every connector, so what's missing doesn't depend on config order.
+                services.AddConnectorFallbacks();
 
                 // Windows presentation layer.
                 services.AddSingleton<INotificationService, WpfNotificationService>();
