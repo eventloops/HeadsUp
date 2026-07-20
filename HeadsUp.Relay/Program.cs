@@ -4,6 +4,7 @@ using HeadsUp.Relay.Endpoints;
 using HeadsUp.Relay.Ingress;
 using HeadsUp.Relay.Routing;
 using Microsoft.Extensions.Logging;
+using SlackNet;
 using SlackNet.Extensions.DependencyInjection;
 using SlackNet.SocketMode;
 
@@ -68,6 +69,15 @@ builder.Services.AddSingleton<IEventAuthorizationResolver>(
     sp => sp.GetRequiredService<CachingEventAuthorizationResolver>());
 builder.Services.AddHostedService<AuthorizationCachePruner>();
 builder.Services.AddSingleton<EventRouter>();
+
+// Name resolution happens here so one lookup serves every desktop, and because relay-mode
+// desktops hold no Slack credential of their own. Needs a bot token; without one the relay
+// forwards ids and the desktop shows those instead.
+builder.Services.AddSingleton(sp => new EventEnricher(
+    string.IsNullOrWhiteSpace(options.BotToken)
+        ? null
+        : new SlackServiceBuilder().UseApiToken(options.BotToken).GetApiClient(),
+    sp.GetRequiredService<ILogger<EventEnricher>>()));
 
 // Identity. The relay is the OAuth client, so users face a single consent screen — Slack
 // refuses to combine Sign in with Slack scopes with ordinary user scopes in one request.

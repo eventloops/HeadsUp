@@ -313,3 +313,98 @@ public class RelaySessionSubjectTests
     public void A_malformed_token_yields_null(string jwt) =>
         Assert.Null(RelaySignInCredentialProvider.ReadSubject(jwt));
 }
+
+/// <summary>
+/// In relay mode the desktop holds no Slack credential, so it cannot turn an id into a person.
+/// The relay attaches names under "_headsup"; without them an alert can only say
+/// "U0BK42E575E started a huddle", which is not a shippable notification.
+/// </summary>
+public class RelayEnrichmentTests
+{
+    private const string SelfId = "U_SELF";
+
+    private static Alert? Handle(string json)
+    {
+        var source = new SlackRelaySource(
+            new NoSession(),
+            new StaticMonitor<RelayClientOptions>(new RelayClientOptions()),
+            new StaticMonitor<DetectionOptions>(new DetectionOptions()),
+            new StaticMonitor<AlertOptions>(new AlertOptions { Huddles = true, DirectMessages = true }),
+            new StaticMonitor<PriorityOptions>(new PriorityOptions()),
+            new AppStatus(),
+            NullLogger<SlackRelaySource>.Instance)
+        {
+            _selfUserId = SelfId,
+        };
+
+        Alert? raised = null;
+        source.AlertRaised += (_, a) => raised = a;
+        source.HandleEvent(json);
+        return raised;
+    }
+
+    [Fact]
+    public void A_huddle_shows_the_name_the_relay_resolved()
+    {
+        var json = """
+            {"type":"message","user":"USLACKBOT","channel":"C1","subtype":"huddle_thread",
+             "room":{"created_by":"U_SARAH","has_ended":false},
+             "_headsup":{"user_name":"Sarah Whitfield","user_avatar":"https://img/72.png",
+                         "channel_name":"project-atlas"}}
+            """;
+
+        var alert = Handle(json);
+
+        Assert.Equal("Sarah Whitfield", alert!.InitiatorDisplayName);
+        Assert.Equal("https://img/72.png", alert.InitiatorAvatarUrl);
+        Assert.Equal("project-atlas", alert.ChannelName);
+        // The id is still the identity; only the presentation changed.
+        Assert.Equal(new UserId("U_SARAH"), alert.InitiatorUserId);
+    }
+
+    [Fact]
+    public void A_message_shows_the_name_the_relay_resolved()
+    {
+        var json = """
+            {"type":"message","user":"U_SARAH","channel":"D1","text":"you around?",
+             "_headsup":{"user_name":"Sarah Whitfield"}}
+            """;
+
+        Assert.Equal("Sarah Whitfield", Handle(json)!.InitiatorDisplayName);
+    }
+
+    [Fact]
+    public void Without_enrichment_the_alert_still_fires_naming_ids()
+    {
+        // A relay with no bot token configured, or a lookup that failed: an alert naming an id
+        // still interrupts the right person at the right moment.
+        var json = """{"type":"message","user":"U_SARAH","channel":"D1","text":"you around?"}""";
+
+        var alert = Handle(json);
+
+        Assert.NotNull(alert);
+        Assert.Equal("U_SARAH", alert.InitiatorDisplayName);
+    }
+
+    [Fact]
+    public void A_partial_enrichment_falls_back_per_field()
+    {
+        var json = """
+            {"type":"message","user":"U_SARAH","channel":"C1","text":"<@U_SELF> hi",
+             "_headsup":{"user_name":"Sarah Whitfield"}}
+            """;
+
+        var alert = Handle(json);
+
+        Assert.Equal("Sarah Whitfield", alert!.InitiatorDisplayName);
+        Assert.Equal("C1", alert.ChannelName);   // no channel_name supplied
+        Assert.Null(alert.InitiatorAvatarUrl);
+    }
+
+    private sealed class NoSession : IRelayCredentialProvider
+    {
+        public string SourceDescription => "test";
+        public Task<RelaySession?> GetSessionAsync(bool forceRefresh, CancellationToken ct) =>
+            Task.FromResult<RelaySession?>(null);
+    }
+}

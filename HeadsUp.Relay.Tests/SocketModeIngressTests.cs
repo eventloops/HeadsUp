@@ -23,6 +23,8 @@ public class SocketModeIngressTests
     private SocketModeIngress Ingress() =>
         new(_socket,
             new EventRouter(_registry, _resolver, NullLogger<EventRouter>.Instance),
+            // No bot token, so enrichment is a pass-through — what a relay without one does.
+            new EventEnricher(null, NullLogger<EventEnricher>.Instance),
             NullLogger<SocketModeIngress>.Instance);
 
     private static RawSocketMessage Frame(string json, int socketId = 1) =>

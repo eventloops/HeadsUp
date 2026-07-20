@@ -23,12 +23,18 @@ public sealed class SocketModeIngress : BackgroundService
 {
     private readonly ICoreSocketModeClient _socket;
     private readonly EventRouter _router;
+    private readonly EventEnricher _enricher;
     private readonly ILogger<SocketModeIngress> _logger;
 
-    public SocketModeIngress(ICoreSocketModeClient socket, EventRouter router, ILogger<SocketModeIngress> logger)
+    public SocketModeIngress(
+        ICoreSocketModeClient socket,
+        EventRouter router,
+        EventEnricher enricher,
+        ILogger<SocketModeIngress> logger)
     {
         _socket = socket;
         _router = router;
+        _enricher = enricher;
         _logger = logger;
     }
 
@@ -108,7 +114,14 @@ public sealed class SocketModeIngress : BackgroundService
 
         try
         {
-            var delivered = await _router.RouteAsync(parsed.Event, ct);
+            // Names are attached before routing so the lookup is done once per event rather
+            // than once per recipient.
+            var enriched = parsed.Event with
+            {
+                Payload = await _enricher.EnrichAsync(parsed.Event.Payload, ct),
+            };
+
+            var delivered = await _router.RouteAsync(enriched, ct);
             _logger.LogDebug("Routed an event to {Count} connection(s).", delivered);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

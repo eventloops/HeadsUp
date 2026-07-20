@@ -10,6 +10,11 @@
       "http://localhost:5285/auth/callback"
     ],
     "scopes": {
+      "bot": [
+        "users:read",
+        "channels:read",
+        "groups:read"
+      ],
       "user": [
         "channels:history",
         "groups:history",

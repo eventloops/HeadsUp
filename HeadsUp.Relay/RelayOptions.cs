@@ -23,6 +23,14 @@ public sealed class RelayOptions
     public string AppToken { get; set; } = string.Empty;
 
     /// <summary>
+    /// A bot token (<c>xoxb-…</c>) used only to turn user and channel ids into names before
+    /// events are forwarded. Optional: without it desktops still get alerts, but they name raw
+    /// ids, because in relay mode the desktop holds no Slack credential to resolve them with.
+    /// The app-level token cannot do this — <c>users.info</c> rejects it.
+    /// </summary>
+    public string BotToken { get; set; } = string.Empty;
+
+    /// <summary>
     /// The Slack app's client id. Identifies the app when starting the OAuth flow and when
     /// exchanging the authorization code. Not a secret.
     /// </summary>

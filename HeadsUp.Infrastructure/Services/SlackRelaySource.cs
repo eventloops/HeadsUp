@@ -219,7 +219,7 @@ public sealed class SlackRelaySource : BackgroundService, IAlertSource
             if (AlertPolicy.IsChannelMuted(new ChannelId(huddle.ChannelId ?? string.Empty), SourceId, prefs.Muted))
                 return;
 
-            RaiseHuddle(huddle);
+            RaiseHuddle(huddle, root);
             return;
         }
 
@@ -229,7 +229,19 @@ public sealed class SlackRelaySource : BackgroundService, IAlertSource
             HandleMessage(root, prefs);
     }
 
-    private void RaiseHuddle(HuddleFacts huddle)
+    /// <summary>
+    /// Names the relay attached, if any. The desktop holds no Slack credential in relay mode,
+    /// so without these an alert can only name raw ids — "U0BK42E575E started a huddle".
+    /// </summary>
+    private static (string? Name, string? Avatar, string? Channel) Enrichment(JsonElement root)
+    {
+        if (!root.TryGetProperty("_headsup", out var e) || e.ValueKind != JsonValueKind.Object)
+            return (null, null, null);
+
+        return (e.Str("user_name"), e.Str("user_avatar"), e.Str("channel_name"));
+    }
+
+    private void RaiseHuddle(HuddleFacts huddle, JsonElement root)
     {
         var userId = huddle.InitiatorUserId;
         var channelId = huddle.ChannelId;
@@ -249,12 +261,14 @@ public sealed class SlackRelaySource : BackgroundService, IAlertSource
             _recentHuddles[channelId] = now;
         }
 
+        var (name, avatar, channelName) = Enrichment(root);
+
         AlertRaised?.Invoke(this, new Alert(
             InitiatorUserId: new UserId(userId),
-            InitiatorDisplayName: userId,
-            InitiatorAvatarUrl: null,
+            InitiatorDisplayName: name ?? userId,
+            InitiatorAvatarUrl: avatar,
             ChannelId: new ChannelId(channelId),
-            ChannelName: channelId,
+            ChannelName: channelName ?? channelId,
             IsDirectMessage: huddle.IsDirectMessage,
             // Slack's own deep link, which is more reliable than one we assemble.
             Link: huddle.HuddleLink ?? $"slack://channel?id={channelId}",
@@ -281,12 +295,14 @@ public sealed class SlackRelaySource : BackgroundService, IAlertSource
         if (AlertPolicy.Classify(isMention, isDm, text, new ChannelId(channelId), SourceId, prefs) is not { } kind)
             return;
 
+        var (name, avatar, channelName) = Enrichment(root);
+
         AlertRaised?.Invoke(this, new Alert(
             InitiatorUserId: new UserId(userId),
-            InitiatorDisplayName: userId,
-            InitiatorAvatarUrl: null,
+            InitiatorDisplayName: name ?? userId,
+            InitiatorAvatarUrl: avatar,
             ChannelId: new ChannelId(channelId),
-            ChannelName: channelId,
+            ChannelName: channelName ?? channelId,
             IsDirectMessage: isDm,
             Link: $"slack://channel?id={channelId}",
             IsPriorityUser: _priorityOptions.CurrentValue.IsPriority(SourceId, new UserId(userId)),
