@@ -48,6 +48,8 @@ public sealed class SlackHuddleMonitor : BackgroundService, IAlertSource
 
     // Bound once a connection is established; null until then, so event handling no-ops.
     private ISlackApiClient? _apiClient;
+    // What _apiClient was built from, so a renewed token can be noticed without rebuilding blindly.
+    private string? _boundUserToken;
     internal string? _teamId;
     internal string? _selfUserId;
 
@@ -99,10 +101,13 @@ public sealed class SlackHuddleMonitor : BackgroundService, IAlertSource
             }
             catch (Exception ex)
             {
-                Status.SetConnection(false, "Reconnecting…");
+                // Slack rejecting our token must force a renewal next round; anything else is
+                // transient and should reuse the credentials we have.
+                refreshNext = IsAuthRejection(ex);
+
+                Status.SetConnection(false, refreshNext ? "Reauthenticating…" : "Reconnecting…");
                 _logger.LogWarning(ex, "Slack Socket Mode connection ended; retrying in {Delay}s.",
                     _reconnectDelay.TotalSeconds);
-                refreshNext = false;
             }
 
             try
@@ -117,6 +122,17 @@ public sealed class SlackHuddleMonitor : BackgroundService, IAlertSource
     }
 
     /// <summary>
+    /// True when Slack refused our credentials rather than the connection merely failing.
+    /// SlackNet surfaces these as auth errors on connect or on the first API call.
+    /// </summary>
+    internal static bool IsAuthRejection(Exception ex) =>
+        ex is SlackException slack &&
+            (slack.Message.Contains("invalid_auth", StringComparison.OrdinalIgnoreCase) ||
+             slack.Message.Contains("token_expired", StringComparison.OrdinalIgnoreCase) ||
+             slack.Message.Contains("token_revoked", StringComparison.OrdinalIgnoreCase) ||
+             slack.Message.Contains("not_authed", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
     /// Fetches credentials, opens one Socket Mode connection, and holds it until it drops.
     /// Returns <c>false</c> when credentials are missing (caller should force a refresh next
     /// round); <c>true</c> after a connection ran and ended of its own accord.
@@ -127,11 +143,18 @@ public sealed class SlackHuddleMonitor : BackgroundService, IAlertSource
         if (creds is null)
         {
             Status.SetConnection(false, "Not signed in");
-            _logger.LogDebug("No Slack app credentials available yet; waiting.");
+
+            // A Warning naming the fix, because in config mode there is no sign-in flow to
+            // prompt: the operator's only route is pasting tokens, and a Debug line they never
+            // see leaves the app looking merely quiet.
+            _logger.LogWarning(
+                "No Slack app credentials available. Sign in, or set Slack:AppToken (xapp-…) " +
+                "and Slack:UserToken (xoxp-…) in appsettings for headless use.");
             return false;
         }
 
         _apiClient = _clientFactory.CreateApiClient(creds);
+        _boundUserToken = creds.UserToken;
         var socket = _clientFactory.CreateSocketClient(creds);
 
         // Raw frames rather than SlackNet's typed dispatch: the typed MessageEvent has no
@@ -156,16 +179,54 @@ public sealed class SlackHuddleMonitor : BackgroundService, IAlertSource
             _logger.LogWarning(ex, "auth.test failed; huddle links will omit the team id.");
         }
 
-        // SlackNet owns the socket's own retry logic, so all this loop does is notice a
-        // connection that has genuinely gone away and let the outer loop rebuild it with
-        // freshly-fetched (possibly rotated) credentials.
-        while (socket.Connected && !stoppingToken.IsCancellationRequested)
-            await Task.Delay(_connectionPollInterval, stoppingToken);
+        try
+        {
+            // SlackNet owns the socket's own retry logic, so this loop notices a connection
+            // that has genuinely gone away — and renews the Web API token in place. The user
+            // token rotates roughly every 12 hours while the app-level token never expires, so
+            // a healthy connection outlives its API credentials; without this the enrichment
+            // calls quietly start failing and the membership gate, which fails open on error,
+            // would begin admitting huddles from channels the user isn't in.
+            while (socket.Connected && !stoppingToken.IsCancellationRequested)
+            {
+                await Task.Delay(_connectionPollInterval, stoppingToken);
+                await RenewApiClientAsync(stoppingToken);
+            }
+        }
+        finally
+        {
+            // In a finally because shutdown cancels the delay above: without it, quitting with
+            // a live connection left the socket open and its envelopes unacknowledged, so Slack
+            // redelivered them on the next launch as stale duplicate alerts.
+            socket.Disconnect();
+            Status.SetConnection(false, "Disconnected");
+            _logger.LogInformation("Disconnected from Slack.");
+        }
 
-        socket.Disconnect();
-        Status.SetConnection(false, "Disconnected");
-        _logger.LogInformation("Disconnected from Slack.");
         return true;
+    }
+
+    /// <summary>
+    /// Rebinds the Web API client when the user token has been renewed underneath us. Cheap and
+    /// silent in the common case: the provider returns the cached token until it nears expiry.
+    /// </summary>
+    private async Task RenewApiClientAsync(CancellationToken ct)
+    {
+        try
+        {
+            var current = await _credentials.GetExistingCredentialsAsync(ct);
+            if (current is null || current.UserToken == _boundUserToken)
+                return;
+
+            _apiClient = _clientFactory.CreateApiClient(current);
+            _boundUserToken = current.UserToken;
+            _logger.LogDebug("Rebound the Slack API client to a renewed user token.");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Keep the existing client; the next poll tries again.
+            _logger.LogDebug(ex, "Could not renew the Slack API credentials this round.");
+        }
     }
 
     // ------------------------------------------------------------------

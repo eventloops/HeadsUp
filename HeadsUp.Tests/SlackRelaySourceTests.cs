@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.WebSockets;
 using HeadsUp.Configuration;
 using HeadsUp.Models;
 using HeadsUp.Services;
@@ -225,6 +227,44 @@ public class SlackRelaySourceTests
     {
         Assert.Null(Handle("""{"type":"reaction_added","user":"U_SARAH"}"""));
     }
+
+    // ------------------------------------------------------------------
+    // Reconnect vs re-authenticate
+    // ------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    public void A_refused_session_is_recognised_as_an_auth_rejection(HttpStatusCode status)
+    {
+        // Must force a fresh session next round; otherwise a relay that rotated its signing
+        // key leaves every desktop retrying a dead session behind "Reconnecting…" forever.
+        var ex = new WebSocketException("upgrade failed", new HttpRequestException("no", null, status));
+
+        Assert.True(SlackRelaySource.IsAuthRejection(ex));
+    }
+
+    [Fact]
+    public void An_upgrade_status_reported_only_in_the_message_still_counts()
+    {
+        // .NET often has no typed inner exception for the failed upgrade.
+        Assert.True(SlackRelaySource.IsAuthRejection(
+            new WebSocketException("The server returned status code '401' when status code '101' was expected.")));
+    }
+
+    [Theory]
+    [InlineData("The remote party closed the WebSocket connection")]
+    [InlineData("Unable to connect to the remote server")]
+    public void A_transient_failure_is_not_an_auth_rejection(string message)
+    {
+        // Re-signing-in on every network blip would be its own bug.
+        Assert.False(SlackRelaySource.IsAuthRejection(new WebSocketException(message)));
+    }
+
+    [Fact]
+    public void A_server_error_is_not_an_auth_rejection() =>
+        Assert.False(SlackRelaySource.IsAuthRejection(
+            new WebSocketException("failed", new HttpRequestException("boom", null, HttpStatusCode.InternalServerError))));
 
     private sealed class StubRelayCredentials : IRelayCredentialProvider
     {

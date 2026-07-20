@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -83,10 +84,15 @@ public sealed class SlackRelaySource : BackgroundService, IAlertSource
             }
             catch (Exception ex)
             {
-                Status.SetConnection(false, "Reconnecting…");
+                // A rejected session must force a fresh one next round. Treating every failure
+                // as transient meant that after the relay rotated its signing key, the desktop
+                // retried the same dead session forever behind "Reconnecting…" and never asked
+                // the user to sign in again.
+                refreshNext = IsAuthRejection(ex);
+
+                Status.SetConnection(false, refreshNext ? "Sign-in expired" : "Reconnecting…");
                 _logger.LogWarning(ex, "Relay connection ended; retrying in {Delay}s.",
                     _reconnectDelay.TotalSeconds);
-                refreshNext = false;
             }
 
             try
@@ -99,6 +105,19 @@ public sealed class SlackRelaySource : BackgroundService, IAlertSource
             }
         }
     }
+
+    /// <summary>
+    /// True when the relay refused our session, as opposed to the connection merely failing.
+    /// The handshake is plain HTTP, so a rejection surfaces as 401/403 on the upgrade rather
+    /// than as anything WebSocket-specific.
+    /// </summary>
+    internal static bool IsAuthRejection(Exception ex) =>
+        ex is WebSocketException { InnerException: HttpRequestException http } &&
+            http.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+        || ex is HttpRequestException direct &&
+            direct.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+        // .NET surfaces the upgrade status in the message when no typed inner exception exists.
+        || ex is WebSocketException && (ex.Message.Contains("401") || ex.Message.Contains("403"));
 
     /// <summary>
     /// Signs in if needed, opens one socket, and pumps it until it closes. Returns false when
