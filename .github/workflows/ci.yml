@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    # Windows is not a preference: HeadsUp.Wpf.Tests targets net8.0-windows and the desktop
+    # app is WPF, so the solution does not build on Linux.
+    runs-on: windows-latest
+
+    # Guarded to this account so the file no-ops if it ever lands on the company GHE mirror —
+    # the relay is a personal project, and a workflow firing on work infrastructure is exactly
+    # the noise we're avoiding. On GHE the owner is the org, not Cameron097, so this is skipped.
+    if: github.repository_owner == 'Cameron097'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore HeadsUp.sln
+
+      - name: Build
+        run: dotnet build HeadsUp.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test HeadsUp.sln --configuration Release --no-build --verbosity normal
+
+  deploy-relay:
+    needs: build-and-test
+    # Deploy only from a real push to main on this account — never on PRs, never on GHE.
+    if: >-
+      github.repository_owner == 'Cameron097'
+      && github.ref == 'refs/heads/main'
+      && github.event_name == 'push'
+
+    # The relay is cross-platform, so it publishes on Linux — faster and cheaper than the
+    # Windows runner, and it doesn't touch the WPF project.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish relay (self-contained, no runtime needed on the box)
+        run: >-
+          dotnet publish HeadsUp.Relay/HeadsUp.Relay.csproj
+          --configuration Release --runtime linux-x64 --self-contained true
+          --output publish
+
+      - name: Write the service environment file from secrets
+        # Values come in through env, not YAML interpolation, so a secret containing $, `, or "
+        # can't break the shell or leak via the parsed command.
+        env:
+          APP_TOKEN: ${{ secrets.RELAY_APP_TOKEN }}
+          BOT_TOKEN: ${{ secrets.RELAY_BOT_TOKEN }}
+          CLIENT_ID: ${{ secrets.RELAY_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.RELAY_CLIENT_SECRET }}
+          PUBLIC_URL: ${{ secrets.RELAY_PUBLIC_URL }}
+          SIGNING_KEY: ${{ secrets.RELAY_SESSION_SIGNING_KEY }}
+        run: |
+          {
+            echo "ASPNETCORE_URLS=http://127.0.0.1:5285"
+            echo "Relay__AppToken=$APP_TOKEN"
+            echo "Relay__BotToken=$BOT_TOKEN"
+            echo "Relay__ClientId=$CLIENT_ID"
+            echo "Relay__ClientSecret=$CLIENT_SECRET"
+            echo "Relay__PublicUrl=$PUBLIC_URL"
+            echo "Relay__SessionSigningKey=$SIGNING_KEY"
+          } > relay.env
+
+      - name: Set up SSH to the box
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "${SSH_PORT:-22}" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Ship the build and restart the service
+        env:
+          SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+        run: |
+          PORT="${SSH_PORT:-22}"
+          SSH="ssh -p $PORT -i ~/.ssh/id_ed25519 $SSH_USER@$SSH_HOST"
+
+          # Secrets to a root-only file the service reads; code to the app dir.
+          scp -P "$PORT" -i ~/.ssh/id_ed25519 relay.env "$SSH_USER@$SSH_HOST:/tmp/relay.env"
+          rsync -az --delete -e "ssh -p $PORT -i ~/.ssh/id_ed25519" \
+            publish/ "$SSH_USER@$SSH_HOST:/opt/headsup-relay/"
+
+          # The sudoers entry (see deploy/README) lets these run without a password.
+          $SSH "sudo install -m 600 -o root -g root /tmp/relay.env /etc/headsup-relay/relay.env \
+                && rm -f /tmp/relay.env \
+                && sudo chmod +x /opt/headsup-relay/HeadsUp.Relay \
+                && sudo systemctl restart headsup-relay \
+                && sudo systemctl is-active headsup-relay"

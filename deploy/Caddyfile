@@ -1,0 +1,13 @@
+# Reverse proxy with automatic HTTPS in front of the relay.
+#
+# TLS is not optional here. Slack refuses to redirect OAuth to a non-HTTPS public URL, and the
+# desktop connects to /events over wss — both need a real certificate. Caddy obtains and renews
+# one from Let's Encrypt on its own, which is why it's the least-effort choice on a cheap box.
+#
+# The relay itself stays plain HTTP on localhost (ASPNETCORE_URLS in the service env); Caddy
+# terminates TLS and forwards. Set Relay:PublicUrl to https://headsup.example.com to match.
+
+headsup.example.com {
+	# reverse_proxy passes WebSocket upgrades through unchanged, so /events just works.
+	reverse_proxy 127.0.0.1:5285
+}

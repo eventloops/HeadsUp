@@ -1,0 +1,30 @@
+[Unit]
+Description=Heads-Up relay
+# Socket Mode dials out, so the network must be up before the relay starts.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=headsup
+WorkingDirectory=/opt/headsup-relay
+ExecStart=/opt/headsup-relay/HeadsUp.Relay
+
+# The Slack tokens and signing key. Written by CD, root-owned and 600, so the deploy user
+# cannot read back what it wrote.
+EnvironmentFile=/etc/headsup-relay/relay.env
+
+# Slack does not queue events for a disconnected app, so a crash loses whatever arrives while
+# it's down. Restart fast, and always.
+Restart=always
+RestartSec=5
+
+# Modest hardening for a service that holds Slack credentials.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/headsup-relay
+
+[Install]
+WantedBy=multi-user.target
